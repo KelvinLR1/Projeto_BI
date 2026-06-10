@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.local
+
+# Logs
+*.log
+backend_debug.log
+apex_vision.log
+
+# IDE and metadata folders
+brain/
+.vscode/
+.idea/
+
+# Node/Next.js files in frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Python cache and environment
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.env/

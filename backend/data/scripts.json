@@ -1,0 +1,23 @@
+[
+    {
+        "id": "1",
+        "name": "Faturamento Consolidado",
+        "query": "SELECT * FROM VENDAS",
+        "description": "Script principal para extração de dados de faturamento e volume.",
+        "created_at": "2026-04-26T13:46:00"
+    },
+    {
+        "id": "2",
+        "name": "Tendência de Receita",
+        "query": "SELECT date, revenue FROM SALES",
+        "description": "Retorna o histórico de receita por data.",
+        "created_at": "2026-04-26T13:46:10"
+    },
+    {
+        "id": "3",
+        "name": "Vendas por Região",
+        "query": "SELECT region, value FROM VENDAS",
+        "description": "Distribuição geográfica das vendas.",
+        "created_at": "2026-04-26T13:46:20"
+    }
+]

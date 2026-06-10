@@ -1,0 +1,103 @@
+{
+    "home": {
+        "cards": [
+            {
+                "id": "card_4",
+                "title": "Taxa de Churn",
+                "script_id": "1",
+                "column": "id",
+                "threshold_success": 5,
+                "threshold_warning": 15,
+                "x": 6,
+                "y": 1,
+                "w": 7,
+                "h": 2
+            },
+            {
+                "id": "card_1",
+                "title": "Faturamento Total",
+                "script_id": "1",
+                "column": "revenue",
+                "threshold_success": 10000,
+                "threshold_warning": 5000,
+                "x": 1,
+                "y": 1,
+                "w": 5,
+                "h": 3,
+                "type": "kpi"
+            }
+        ],
+        "charts": [
+            {
+                "id": "chart_2",
+                "title": "Distribui\u00e7\u00e3o Regional",
+                "script_id": "3",
+                "chartType": "bar",
+                "xAxis": "region",
+                "yAxes": [
+                    "value"
+                ],
+                "x": 9,
+                "y": 3,
+                "w": 4,
+                "h": 4
+            }
+        ],
+        "components": [
+            {
+                "id": "comp-1777316455926",
+                "type": "alerts",
+                "title": "teste de alerta",
+                "x": 1,
+                "y": 4,
+                "w": 4,
+                "h": 4
+            },
+            {
+                "id": "comp-1777316476461",
+                "type": "report",
+                "title": "teste de relatorio",
+                "x": 1,
+                "y": 8,
+                "w": 6,
+                "h": 4,
+                "script_id": "1"
+            }
+        ],
+        "config": {
+            "columns": 12,
+            "rowHeight": 80
+        }
+    },
+    "noc": {
+        "cards": [
+            {
+                "id": "noc_card_1",
+                "title": "Uptime do Sistema",
+                "script_id": "1",
+                "column": "value",
+                "threshold_success": 99,
+                "threshold_warning": 95,
+                "x": 1,
+                "y": 1,
+                "w": 4,
+                "h": 1
+            },
+            {
+                "id": "noc_card_billing",
+                "title": "Faturamento Total",
+                "script_id": "1",
+                "column": "revenue",
+                "threshold_success": 10000,
+                "threshold_warning": 5000,
+                "x": 5,
+                "y": 1,
+                "w": 5,
+                "h": 3,
+                "type": "kpi"
+            }
+        ],
+        "charts": [],
+        "components": []
+    }
+}

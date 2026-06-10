@@ -1,0 +1,13 @@
+{
+    "accent_color": "#ff2d55",
+    "refresh_interval": 30,
+    "system_mode": "DEMO",
+    "show_alerts": true,
+    "alert_popup": true,
+    "alert_sound": false,
+    "alert_pulse": true,
+    "alert_sidebar": true,
+    "alert_duration": 8,
+    "compact_view": false,
+    "theme": "dark"
+}

@@ -1,0 +1,229 @@
+@import "tailwindcss";
+
+@theme {
+  --color-neon-red: var(--neon-red);
+  --color-success: #00ff88;
+  --color-warning: #ffb700;
+  --color-critical: #ff4d4d;
+}
+
+:root {
+  /* Common */
+  --accent-color: #ff2d55; /* Default Dark Neon */
+  --accent-glow: rgba(255, 45, 85, 0.3);
+  
+  /* DARK MODE (DEFAULT - APEX ANALYTICS) */
+  --background: #0b0e14;
+  --foreground: #f0f6fc;
+  --card-bg: rgba(22, 27, 34, 0.5);
+  --card-border: rgba(255, 255, 255, 0.1);
+  --sidebar-bg: #0f1219;
+  --text-secondary: #8b949e;
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --neon-red: #ff2d55;
+}
+
+[data-theme='light'] {
+  /* LIGHT MODE (HUB SOFTWARES) */
+  --background: #f1f5f9;
+  --foreground: #1e293b;
+  --card-bg: rgba(255, 255, 255, 0.95);
+  --card-border: rgba(0, 0, 0, 0.08);
+  --sidebar-bg: #ffffff;
+  --text-secondary: #64748b;
+  --input-bg: rgba(0, 0, 0, 0.03);
+  --accent-color: #c02b2d;
+  --accent-glow: rgba(192, 43, 45, 0.1);
+  --neon-red: #c02b2d;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+@layer components {
+  .glass-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(24px);
+    border: 1px solid var(--card-border);
+    border-radius: 24px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .glass-card:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1), 0 0 20px var(--accent-glow);
+    transform: translateY(-4px);
+  }
+
+  [data-theme='dark'] .glass-card:hover {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 20px var(--accent-glow);
+  }
+
+  .neon-text {
+    text-shadow: 0 0 12px var(--accent-glow);
+  }
+  
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  
+  .status-success { background-color: #00ff88; box-shadow: 0 0 10px #00ff88; }
+  .status-warning { background-color: #ffb700; box-shadow: 0 0 10px #ffb700; }
+  .status-critical { background-color: #ff4d4d; box-shadow: 0 0 10px #ff4d4d; }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.2);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-red);
+}
+
+/* Sidebar Overrides */
+aside {
+  background-color: var(--sidebar-bg) !important;
+  border-color: var(--card-border) !important;
+}
+
+/* Input & Select Overrides */
+input, select, textarea {
+  background-color: var(--input-bg) !important;
+  color: var(--foreground) !important;
+}
+
+/* =============================================
+   LIGHT MODE GLOBAL OVERRIDES
+   ============================================= */
+
+[data-theme='light'] h1,
+[data-theme='light'] h2,
+[data-theme='light'] h3,
+[data-theme='light'] h4 {
+  color: #0f172a;
+}
+
+/* Fix white-on-white text (hardcoded text-white) */
+[data-theme='light'] .text-white {
+  color: #1e293b !important;
+}
+
+/* Fix dark backgrounds that are hardcoded */
+[data-theme='light'] .bg-black\/40,
+[data-theme='light'] .bg-\[\#0b0e14\],
+[data-theme='light'] .bg-\[\#0d0d10\],
+[data-theme='light'] .bg-\[\#161b22\],
+[data-theme='light'] .bg-\[\#0d1117\] {
+  background-color: var(--card-bg) !important;
+}
+
+/* Fix gray text that becomes invisible on light bg */
+[data-theme='light'] .text-gray-400 { color: #64748b !important; }
+[data-theme='light'] .text-gray-500 { color: #64748b !important; }
+[data-theme='light'] .text-gray-600 { color: #475569 !important; }
+[data-theme='light'] .text-gray-700 { color: #334155 !important; }
+
+/* Fix white/transparent borders on light bg */
+[data-theme='light'] .border-white\/5,
+[data-theme='light'] .border-white\/10 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Fix bg-white/5, bg-white/[0.02], bg-white/[0.03] utilities */
+[data-theme='light'] .bg-white\/5 {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+[data-theme='light'] .bg-white\/\[0\.02\],
+[data-theme='light'] .bg-white\/\[0\.03\] {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* Fix bg-black/40, bg-black/60 overlays */
+[data-theme='light'] .bg-black\/60 {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Chart tooltip fix */
+[data-theme='light'] .recharts-default-tooltip {
+  background-color: white !important;
+  border-color: var(--card-border) !important;
+  color: #1e293b !important;
+}
+
+/* Table fixes */
+[data-theme='light'] thead {
+  background-color: #f1f5f9 !important;
+  color: #475569 !important;
+}
+[data-theme='light'] tbody tr:hover {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+[data-theme='light'] tbody td {
+  color: #334155 !important;
+}
+[data-theme='light'] tbody td:first-child {
+  color: #0f172a !important;
+}
+
+/* Monitor header fix */
+[data-theme='light'] header.bg-black\/40 {
+  background-color: white !important;
+  border-color: var(--card-border) !important;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+}
+
+/* NOC grid slot cells */
+[data-theme='light'] .border-white\/20 {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+[data-theme='light'] .bg-white\/\[0\.04\] {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* Layout designer canvas */
+[data-theme='light'] .bg-\[\#0d1117\] {
+  background-color: #f1f5f9 !important;
+}
+[data-theme='light'] .bg-\[\#1f222e\] {
+  background-color: #e2e8f0 !important;
+}
+[data-theme='light'] .bg-\[\#252836\] {
+  background-color: #e2e8f0 !important;
+}
+
+/* Alerts card in monitor */
+[data-theme='light'] .glass-card.bg-black\/40 {
+  background-color: white !important;
+}
+
+/* Fix divider lines */
+[data-theme='light'] .divide-white\/5 > * {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Search input in reports */
+[data-theme='light'] .bg-black\/40 {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  color: #1e293b !important;
+}
+
+/* Scrollbar thumb in light mode */
+[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}

@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pandas
+sqlalchemy
+pyodbc
+python-dotenv
+requests
+openpyxl
+fpdf2
+pydantic
+streamlit
+streamlit-lottie
+plotly
+xlsxwriter
+numpy
