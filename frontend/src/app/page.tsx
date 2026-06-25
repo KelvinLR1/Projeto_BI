@@ -1,114 +1,132 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import BILayout from '@/components/BI/Layout';
 import KpiCard from '@/components/BI/KpiCard';
 import { motion } from 'framer-motion';
-import { TrendingUp, Activity, LayoutDashboard, Monitor, AlertCircle, RefreshCcw, ListOrdered, BarChart as BarIcon, LineChart as LineIcon, PieChart as PieIcon, Database, Trash2, Shield } from 'lucide-react';
+import { TrendingUp, Activity, LayoutDashboard, Monitor, AlertCircle, RefreshCcw, ListOrdered, BarChart as BarIcon, LineChart as LineIcon, PieChart as PieIcon, Database, Trash2, Shield, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { 
   BarChart as ReBarChart, Bar, LineChart as ReLineChart, Line, 
   PieChart as RePieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend 
 } from 'recharts';
+import SafeResponsiveContainer from '@/components/BI/SafeResponsiveContainer';
 import { useAlerts } from '@/context/AlertContext';
+import { fetchWithCache } from '@/utils/api';
 
 export default function Dashboard() {
   const router = useRouter();
-  const { alerts, clearAlerts } = useAlerts();
+  const { alerts, clearAlerts, isSidebarTransitioning } = useAlerts();
   const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config?: any}>({ cards: [], charts: [], components: [] });
   const [kpiData, setKpiData] = useState<Record<string, any>>({});
   const [chartDataMap, setChartDataMap] = useState<Record<string, any[]>>({});
   const [reportDataMap, setReportDataMap] = useState<Record<string, any[]>>({});
+  const [reportSortMap, setReportSortMap] = useState<Record<string, { column: string; direction: 'asc' | 'desc' }>>({});
+  const [reportPageMap, setReportPageMap] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<any>(null);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState(false);
+
+  const handleReportSort = (compId: string, column: string) => {
+    setReportPageMap(prev => ({ ...prev, [compId]: 1 }));
+    setReportSortMap(prev => {
+      const current = prev[compId];
+      if (!current || current.column !== column) {
+        return { ...prev, [compId]: { column, direction: 'asc' } };
+      }
+      if (current.direction === 'asc') {
+        return { ...prev, [compId]: { column, direction: 'desc' } };
+      }
+      const next = { ...prev };
+      delete next[compId];
+      return next;
+    });
+  };
 
   const COLORS = ['#ff2d55', '#00ff88', '#ffb700', '#3b82f6', '#8b5cf6', '#ec4899', '#10b981'];
 
   const fetchData = useCallback(async () => {
     setIsFetching(true);
     try {
-      const [layoutRes, settingsRes, scriptsRes] = await Promise.all([
-        fetch('http://localhost:8000/api/layouts/home'),
-        fetch('http://localhost:8000/api/settings'),
-        fetch('http://localhost:8000/api/scripts')
-      ]);
-      
-      const layoutData = await layoutRes.json();
-      const settingsData = await settingsRes.json();
-      const scripts = await scriptsRes.json();
-      
-      setSettings(settingsData);
-      setLayout({
-        cards: Array.isArray(layoutData.cards) ? layoutData.cards : [],
-        charts: Array.isArray(layoutData.charts) ? layoutData.charts : [],
-        components: Array.isArray(layoutData.components) ? layoutData.components : [],
-        config: layoutData.config
+      // Carrega layouts, settings e scripts usando cache SWR
+      const layoutData = await fetchWithCache<any>('http://127.0.0.1:8000/api/layouts/home', undefined, (data) => {
+        setLayout({
+          cards: Array.isArray(data.cards) ? data.cards : [],
+          charts: Array.isArray(data.charts) ? data.charts : [],
+          components: Array.isArray(data.components) ? data.components : [],
+          config: data.config
+        });
       });
 
-      // Fetch Data for Cards
-      const newKpiData: Record<string, any> = {};
+      const settingsData = await fetchWithCache<any>('http://127.0.0.1:8000/api/settings', undefined, (data) => {
+        setSettings(data);
+      });
+
+      const scripts = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts');
+      
+      // Fetch Data for Cards — coleta tudo em batch para evitar múltiplos setState
+      const kpiBatch: Record<string, any> = {};
       for (const kpi of layoutData.cards || []) {
         const script = scripts.find((s: any) => s.id === kpi.script_id);
         if (script) {
-          const res = await fetch('http://localhost:8000/api/scripts/execute', {
+          const result = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
           });
-          const result = await res.json();
-          if (result.length > 0) newKpiData[kpi.id] = result[0][kpi.column];
+          if (result && result.length > 0) {
+            kpiBatch[kpi.id] = result[0][kpi.column];
+          }
         }
       }
-      setKpiData(newKpiData);
+      // Atualiza todos os KPIs de uma só vez → um único re-render
+      if (Object.keys(kpiBatch).length > 0) {
+        setKpiData(prev => ({ ...prev, ...kpiBatch }));
+      }
 
       // Fetch Data for Charts
-      const newChartData: Record<string, any[]> = {};
       for (const chart of layoutData.charts || []) {
         const script = scripts.find((s: any) => s.id === chart.script_id);
         if (script) {
-          const res = await fetch('http://localhost:8000/api/scripts/execute', {
+          await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
-          });
-          const result = await res.json();
-          
-          // Process aggregation
-          const agg: Record<string, any> = {};
-          result.forEach((row: any) => {
-            const key = String(row[chart.xAxis] || "N/A");
-            if (!agg[key]) {
-                agg[key] = { [chart.xAxis]: key };
-                chart.yAxes.forEach((y: string) => agg[key][y] = 0);
+          }, (result) => {
+            if (result) {
+              // Process aggregation
+              const agg: Record<string, any> = {};
+              result.forEach((row: any) => {
+                const key = String(row[chart.xAxis] || "N/A");
+                if (!agg[key]) {
+                    agg[key] = { [chart.xAxis]: key };
+                    chart.yAxes.forEach((y: string) => agg[key][y] = 0);
+                }
+                chart.yAxes.forEach((y: string) => {
+                    agg[key][y] += parseFloat(row[y]) || 0;
+                });
+              });
+              let finalData = Object.values(agg);
+              if (chart.chartType === 'ranking') finalData = finalData.sort((a: any, b: any) => (b[chart.yAxes[0]] || 0) - (a[chart.yAxes[0]] || 0));
+              setChartDataMap(prev => ({ ...prev, [chart.id]: finalData }));
             }
-            chart.yAxes.forEach((y: string) => {
-                agg[key][y] += parseFloat(row[y]) || 0;
-            });
           });
-          let finalData = Object.values(agg);
-          if (chart.chartType === 'ranking') finalData = finalData.sort((a: any, b: any) => (b[chart.yAxes[0]] || 0) - (a[chart.yAxes[0]] || 0));
-          newChartData[chart.id] = finalData;
         }
       }
-      setChartDataMap(newChartData);
 
       // Fetch Report Data
-      const newReportData: Record<string, any[]> = {};
-      for (const comp of (layoutData.components || []).filter((c: any) => c.type === 'report')) {
+      for (const comp of (layoutData.components || []).filter((c: any) => c.compType === 'report' || c.script_id !== undefined)) {
         const script = scripts.find((s: any) => s.id === comp.script_id);
         if (script) {
-          const res = await fetch('http://localhost:8000/api/scripts/execute', {
+          await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
+          }, (result) => {
+            setReportDataMap(prev => ({ ...prev, [comp.id]: Array.isArray(result) ? result : [] }));
           });
-          const result = await res.json();
-          newReportData[comp.id] = Array.isArray(result) ? result : [];
         }
       }
-      setReportDataMap(newReportData);
 
       setError(false);
     } catch (err) {
@@ -120,11 +138,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    // Use dynamic interval from settings or default to 30s
-    const intervalTime = (settings?.refresh_interval || 30) * 1000;
+    // Use a faster retry interval (3s) if fetch failed, otherwise normal refresh interval
+    const intervalTime = error
+      ? 3000
+      : (settings?.refresh_interval || 30) * 1000;
     const interval = setInterval(fetchData, intervalTime);
     return () => clearInterval(interval);
-  }, [fetchData, settings?.refresh_interval]);
+  }, [fetchData, settings?.refresh_interval, error]);
 
   const getKpiStatus = (kpi: any, value: number) => {
     if (kpi.kpi_mode === 'info') return "info";
@@ -158,23 +178,52 @@ export default function Dashboard() {
         );
     }
 
+    const gradientDefs = (
+      <defs>
+        {COLORS.map((color, i) => (
+          <linearGradient key={i} id={`barGrad-home-${i}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.85} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.55} />
+          </linearGradient>
+        ))}
+      </defs>
+    );
+
     return (
-        <ResponsiveContainer width="100%" height="100%">
+        <SafeResponsiveContainer width="100%" height="100%" minWidth={0} debounce={isSidebarTransitioning ? 1000 : 150}>
             {chart.chartType === 'bar' ? (
-                <ReBarChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} />
-                    <XAxis dataKey={chart.xAxis} stroke="var(--text-secondary)" fontSize={9} tickLine={false} axisLine={false} />
+                <ReBarChart data={data} barCategoryGap="35%">
+                    {gradientDefs}
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.07)" vertical={false} />
+                    <XAxis dataKey={chart.xAxis} stroke="var(--text-secondary)" fontSize={9} tickLine={false} axisLine={false} dy={6} />
                     <YAxis stroke="var(--text-secondary)" fontSize={9} tickLine={false} axisLine={false} />
-                    <Tooltip cursor={{ fill: 'rgba(128,128,128,0.05)' }} contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--accent-color)", borderRadius: "12px", fontSize: '10px', color: 'var(--foreground)' }} />
-                    {chart.yAxes.map((y: string, i: number) => <Bar key={y} dataKey={y} fill={COLORS[i % COLORS.length]} radius={[2, 2, 0, 0]} />)}
+                    <Tooltip
+                        cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+                        contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid rgba(255,45,85,0.25)", borderRadius: "14px", fontSize: '10px', color: 'var(--foreground)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)', padding: '8px 14px' }}
+                        itemStyle={{ color: 'var(--foreground)', fontWeight: 700 }}
+                        labelStyle={{ color: 'var(--text-secondary)', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}
+                    />
+                    {chart.yAxes.map((y: string, i: number) => (
+                        <Bar
+                            key={y}
+                            dataKey={y}
+                            fill={`url(#barGrad-home-${i % COLORS.length})`}
+                            radius={[10, 10, 3, 3]}
+                        />
+                    ))}
                 </ReBarChart>
             ) : chart.chartType === 'line' ? (
                 <ReLineChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} />
-                    <XAxis dataKey={chart.xAxis} stroke="var(--text-secondary)" fontSize={9} tickLine={false} axisLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.07)" vertical={false} />
+                    <XAxis dataKey={chart.xAxis} stroke="var(--text-secondary)" fontSize={9} tickLine={false} axisLine={false} dy={6} />
                     <YAxis stroke="var(--text-secondary)" fontSize={9} tickLine={false} axisLine={false} />
-                    <Tooltip cursor={{ fill: 'rgba(128,128,128,0.05)' }} contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--accent-color)", borderRadius: "12px", fontSize: '10px', color: 'var(--foreground)' }} />
-                    {chart.yAxes.map((y: string, i: number) => <Line key={y} type="monotone" dataKey={y} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} />)}
+                    <Tooltip
+                        cursor={{ stroke: 'rgba(255,45,85,0.2)', strokeWidth: 1 }}
+                        contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid rgba(255,45,85,0.25)", borderRadius: "14px", fontSize: '10px', color: 'var(--foreground)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)', padding: '8px 14px' }}
+                        itemStyle={{ color: 'var(--foreground)', fontWeight: 700 }}
+                        labelStyle={{ color: 'var(--text-secondary)', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}
+                    />
+                    {chart.yAxes.map((y: string, i: number) => <Line key={y} type="monotone" dataKey={y} stroke={COLORS[i % COLORS.length]} strokeWidth={2.5} dot={{ r: 3, fill: COLORS[i % COLORS.length], strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />)}
                 </ReLineChart>
             ) : (
                 <RePieChart>
@@ -186,12 +235,12 @@ export default function Dashboard() {
                     <Tooltip />
                 </RePieChart>
             )}
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
     );
   };
 
   return (
-    <BILayout>
+    <>
         {/* Glow Diagonal do Canto Superior Esquerdo */}
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-neon-red/30 via-neon-red/5 to-transparent pointer-events-none z-0" />
         
@@ -258,7 +307,7 @@ export default function Dashboard() {
             ))}
 
             {/* RENDER ALERTS */}
-            {(layout.components || []).filter((c: any) => c.type === 'alerts').map((comp: any) => (
+            {(layout.components || []).filter((c: any) => c.compType === 'alerts' || (c.type === 'components' && c.script_id === undefined)).map((comp: any) => (
                 <div key={comp.id} className="glass-card flex flex-col bg-[var(--card-bg)] border-[var(--card-border)] overflow-hidden" style={{ gridColumn: `${comp.x || 'auto'} / span ${comp.w || 4}`, gridRow: `${comp.y || 'auto'} / span ${comp.h || 4}` }}>
                     <div className="p-6 border-b border-[var(--card-border)] bg-[var(--input-bg)] flex justify-between items-center">
                         <div className="flex items-center gap-3">
@@ -290,9 +339,40 @@ export default function Dashboard() {
             ))}
 
             {/* RENDER REPORTS */}
-            {(layout.components || []).filter((c: any) => c.type === 'report').map((comp: any) => {
-                const rows = reportDataMap[comp.id] || [];
-                const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+            {(layout.components || []).filter((c: any) => c.compType === 'report' || (c.type === 'components' && c.script_id !== undefined)).map((comp: any) => {
+                const baseRows = reportDataMap[comp.id] || [];
+                const cols = baseRows.length > 0 ? Object.keys(baseRows[0]) : [];
+                
+                // Ordenação local
+                const sortConfig = reportSortMap[comp.id];
+                const sortedRows = [...baseRows];
+                if (sortConfig) {
+                    sortedRows.sort((a, b) => {
+                        const valA = a[sortConfig.column];
+                        const valB = b[sortConfig.column];
+                        if (valA == null) return 1;
+                        if (valB == null) return -1;
+                        
+                        const numA = Number(valA);
+                        const numB = Number(valB);
+                        if (!isNaN(numA) && !isNaN(numB)) {
+                            return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+                        }
+                        
+                        const strA = String(valA).toLowerCase();
+                        const strB = String(valB).toLowerCase();
+                        if (strA < strB) return sortConfig.direction === 'asc' ? -1 : 1;
+                        if (strA > strB) return sortConfig.direction === 'asc' ? 1 : -1;
+                        return 0;
+                    });
+                }
+
+                // Paginação local
+                const PAGE_SIZE = 20;
+                const currentPage = reportPageMap[comp.id] || 1;
+                const totalPages = Math.ceil(sortedRows.length / PAGE_SIZE) || 1;
+                const rows = sortedRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
                 return (
                     <div
                         key={comp.id}
@@ -302,7 +382,7 @@ export default function Dashboard() {
                         <div className="p-5 border-b border-[var(--card-border)] bg-[var(--input-bg)] flex items-center gap-3 flex-shrink-0">
                             <Database className="text-neon-red" size={14} />
                             <h2 className="text-xs font-black text-[var(--foreground)] uppercase tracking-widest flex-1">{comp.title}</h2>
-                            <span className="text-[9px] font-black text-[var(--text-secondary)] opacity-60 uppercase tracking-widest">{rows.length} linhas</span>
+                            <span className="text-[9px] font-black text-[var(--text-secondary)] opacity-60 uppercase tracking-widest">{sortedRows.length} linhas</span>
                         </div>
                         <div className="flex-1 overflow-auto custom-scrollbar">
                             {cols.length === 0 ? (
@@ -312,11 +392,33 @@ export default function Dashboard() {
                                 </div>
                             ) : (
                                 <table className="w-full text-left border-collapse">
-                                    <thead className="sticky top-0 bg-[var(--input-bg)] z-10">
+                                    <thead>
                                         <tr>
-                                            {cols.map(col => (
-                                                <th key={col} className="px-4 py-3 text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)] opacity-70 border-b border-[var(--card-border)] whitespace-nowrap">{col}</th>
-                                            ))}
+                                            {cols.map(col => {
+                                                const isSorted = reportSortMap[comp.id]?.column === col;
+                                                const direction = reportSortMap[comp.id]?.direction;
+                                                return (
+                                                    <th 
+                                                        key={col} 
+                                                        onClick={() => handleReportSort(comp.id, col)}
+                                                        className="sticky top-0 z-10 px-4 py-4 text-[10px] font-black uppercase tracking-widest text-[var(--foreground)] border-b-2 border-[var(--card-border)] whitespace-nowrap shadow-sm cursor-pointer hover:bg-[var(--input-bg)] select-none transition-colors group" 
+                                                        style={{ backgroundColor: 'var(--table-header-bg)' }}
+                                                    >
+                                                        <div className="flex items-center gap-1.5 justify-start">
+                                                            <span>{col}</span>
+                                                            {isSorted ? (
+                                                                direction === 'asc' ? (
+                                                                    <ArrowUp size={10} className="text-neon-red" />
+                                                                ) : (
+                                                                    <ArrowDown size={10} className="text-neon-red" />
+                                                                )
+                                                            ) : (
+                                                                <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-60 transition-opacity" />
+                                                            )}
+                                                        </div>
+                                                    </th>
+                                                );
+                                            })}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -333,10 +435,31 @@ export default function Dashboard() {
                                 </table>
                             )}
                         </div>
+                        {cols.length > 0 && totalPages > 1 && (
+                            <div className="p-4 border-t border-[var(--card-border)] bg-[var(--input-bg)] flex items-center justify-between flex-shrink-0 text-[9px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
+                                <span>Pág. {currentPage} de {totalPages}</span>
+                                <div className="flex gap-2">
+                                    <button 
+                                        disabled={currentPage === 1}
+                                        onClick={() => setReportPageMap(prev => ({ ...prev, [comp.id]: currentPage - 1 }))}
+                                        className="p-1 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--foreground)] disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer flex items-center justify-center"
+                                    >
+                                        <ChevronLeft size={12} />
+                                    </button>
+                                    <button 
+                                        disabled={currentPage === totalPages}
+                                        onClick={() => setReportPageMap(prev => ({ ...prev, [comp.id]: currentPage + 1 }))}
+                                        className="p-1 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--foreground)] disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer flex items-center justify-center"
+                                    >
+                                        <ChevronRight size={12} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             })}
         </div>
-    </BILayout>
+    </>
   );
 }

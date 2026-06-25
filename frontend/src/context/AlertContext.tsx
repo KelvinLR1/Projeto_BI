@@ -18,6 +18,9 @@ interface AlertContextType {
     addAlert: (title: string, message: string, type: 'critical' | 'warning' | 'info') => void;
     clearAlerts: () => void;
     markAsRead: (id: string) => void;
+    isSidebarCollapsed: boolean;
+    isSidebarTransitioning: boolean;
+    toggleSidebar: () => void;
 }
 
 const AlertContext = createContext<AlertContextType | undefined>(undefined);
@@ -26,16 +29,33 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [activeToasts, setActiveToasts] = useState<Alert[]>([]);
     const [duration, setDuration] = useState(8); // Default 8s
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isSidebarTransitioning, setIsSidebarTransitioning] = useState(false);
 
     useEffect(() => {
-        // Fetch custom duration from settings
-        fetch('http://localhost:8000/api/settings')
-            .then(res => res.json())
-            .then(data => {
-                if (data.alert_duration) setDuration(data.alert_duration);
-            })
-            .catch(console.error);
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem("sidebar-collapsed");
+            if (saved !== null) {
+                setIsSidebarCollapsed(saved === "true");
+            }
+        }
     }, []);
+
+    const toggleSidebar = () => {
+        setIsSidebarCollapsed(prev => {
+            const next = !prev;
+            if (typeof window !== 'undefined') {
+                localStorage.setItem("sidebar-collapsed", String(next));
+            }
+            return next;
+        });
+        setIsSidebarTransitioning(true);
+        setTimeout(() => {
+            setIsSidebarTransitioning(false);
+        }, 350); // Cobrir os 300ms de animação do CSS
+    };
+
+
 
     const addAlert = (title: string, message: string, type: 'critical' | 'warning' | 'info') => {
         const newAlert: Alert = {
@@ -66,7 +86,15 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AlertContext.Provider value={{ alerts, addAlert, clearAlerts, markAsRead }}>
+        <AlertContext.Provider value={{ 
+            alerts, 
+            addAlert, 
+            clearAlerts, 
+            markAsRead,
+            isSidebarCollapsed,
+            isSidebarTransitioning,
+            toggleSidebar
+        }}>
             {children}
             {/* FLOATING TOASTS CONTAINER */}
             <div className="fixed top-8 right-8 z-[1000] flex flex-col gap-3 w-80 pointer-events-none">

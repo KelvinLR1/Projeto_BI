@@ -3,7 +3,13 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, TrendingDown, AlertCircle, Zap, Info, Target } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area } from 'recharts';
+import SafeResponsiveContainer from './SafeResponsiveContainer';
+
+// Constantes estáveis fora do componente — framer-motion compara por referência
+// e NÃO reinicia animações cujo `animate` não mudou de referência.
+const PULSE_ANIMATE = { opacity: [0, 0.15, 0] as number[] };
+const PULSE_TRANSITION = { duration: 1.5, repeat: Infinity, ease: 'easeInOut' };
 
 interface KpiCardProps {
   title: string;
@@ -53,9 +59,10 @@ const KpiCard: React.FC<KpiCardProps> = ({
 
   return (
     <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`relative h-full w-full rounded-[40px] border-2 flex flex-col justify-between overflow-hidden transition-all duration-500 glass-card
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className={`relative h-full w-full rounded-[40px] border-2 flex flex-col justify-between overflow-hidden transition-colors duration-500 glass-card
         ${borderColors[status]}
         ${isCompact ? 'p-8' : 'p-10'}
         ${loading ? 'animate-pulse' : ''}
@@ -71,11 +78,11 @@ const KpiCard: React.FC<KpiCardProps> = ({
         />
       )}
 
-      {/* SOS PULSE ANIMATION */}
+      {/* SOS PULSE ANIMATION — referências estáveis para não reiniciar a cada re-render */}
       {isCritical && !disablePulse && (
-        <motion.div 
-          animate={{ opacity: [0, 0.15, 0] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
+        <motion.div
+          animate={PULSE_ANIMATE}
+          transition={PULSE_TRANSITION}
           className="absolute inset-0 bg-critical pointer-events-none"
         />
       )}
@@ -83,7 +90,7 @@ const KpiCard: React.FC<KpiCardProps> = ({
       {/* BACKGROUND AREA CHART — oculto no modo informativo */}
       {!isInfo && (
         <div className={`absolute inset-x-0 bottom-0 z-0 opacity-40 pointer-events-none ${isCompact ? 'h-3/4' : 'h-1/2'}`}>
-          <ResponsiveContainer width="100%" height="100%">
+          <SafeResponsiveContainer width="100%" height="100%">
             <AreaChart data={sparkData.map((v, i) => ({v, i}))} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id={`gradient-${title.replace(/\s+/g, '')}`} x1="0" y1="0" x2="0" y2="1">
@@ -100,7 +107,7 @@ const KpiCard: React.FC<KpiCardProps> = ({
                 animationDuration={2000}
               />
             </AreaChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
       )}
 
@@ -116,13 +123,13 @@ const KpiCard: React.FC<KpiCardProps> = ({
                     {loading ? (
                       <div className="h-8 w-24 bg-white/10 rounded-lg animate-pulse" />
                     ) : (
-                      <AnimatePresence mode="wait">
+                      <AnimatePresence mode="sync">
                         <motion.span
                           key={displayValue.toString()}
-                          initial={{ opacity: 0, y: 10 }}
+                          initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
+                          exit={{ opacity: 0, y: -8, position: 'absolute' }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
                           className="inline-block"
                         >
                           {displayValue}
@@ -162,13 +169,13 @@ const KpiCard: React.FC<KpiCardProps> = ({
                         {loading ? (
                           <div className="h-16 w-48 bg-white/10 rounded-2xl animate-pulse" />
                         ) : (
-                          <AnimatePresence mode="wait">
+                          <AnimatePresence mode="sync">
                             <motion.span
                               key={displayValue.toString()}
-                              initial={{ opacity: 0, y: 15 }}
+                              initial={{ opacity: 0, y: 8 }}
                               animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -15 }}
-                              transition={{ duration: 0.3, ease: "easeOut" }}
+                              exit={{ opacity: 0, y: -8, position: 'absolute' }}
+                              transition={{ duration: 0.2, ease: "easeOut" }}
                               className="inline-block"
                             >
                               {displayValue}

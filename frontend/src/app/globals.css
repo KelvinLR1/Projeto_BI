@@ -21,6 +21,7 @@
   --text-secondary: #8b949e;
   --input-bg: rgba(255, 255, 255, 0.05);
   --neon-red: #ff2d55;
+  --table-header-bg: #0f131a;
 }
 
 [data-theme='light'] {
@@ -35,6 +36,7 @@
   --accent-color: #c02b2d;
   --accent-glow: rgba(192, 43, 45, 0.1);
   --neon-red: #c02b2d;
+  --table-header-bg: #ffffff;
 }
 
 body {
@@ -227,3 +229,9 @@ input, select, textarea {
 [data-theme='light'] ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
 }
+
+/* Enforce solid background color for table headers inside cards to prevent overlapping on scroll */
+.glass-card table th {
+  background-color: var(--table-header-bg) !important;
+}
+

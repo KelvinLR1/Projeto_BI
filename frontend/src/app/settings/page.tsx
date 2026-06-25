@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import BILayout from '@/components/BI/Layout';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Save, 
@@ -40,7 +39,7 @@ export default function SettingsPage() {
   const [activeHelp, setActiveHelp] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/settings')
+    fetch('http://127.0.0.1:8000/api/settings')
       .then(res => res.json())
       .then(data => {
         setSettings(prev => ({ ...prev, ...data }));
@@ -55,12 +54,17 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch('http://localhost:8000/api/settings', {
+      await fetch('http://127.0.0.1:8000/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
       });
       document.documentElement.setAttribute('data-theme', settings.theme);
+      if (settings.accent_color) {
+        document.documentElement.style.setProperty('--accent-color', settings.accent_color);
+        localStorage.setItem("accent_color", settings.accent_color);
+      }
+      localStorage.setItem("theme", settings.theme);
       alert("Configurações salvas!");
     } catch (err) {
       alert("Erro ao salvar.");
@@ -87,10 +91,10 @@ export default function SettingsPage() {
     </button>
   );
 
-  if (loading) return <BILayout><div className="flex items-center justify-center h-64"><RefreshCcw className="animate-spin text-neon-red" size={32} /></div></BILayout>;
+  if (loading) return <div className="flex items-center justify-center h-64"><RefreshCcw className="animate-spin text-neon-red" size={32} /></div>;
 
   return (
-    <BILayout>
+    <>
       <div className="mb-10 flex justify-between items-center">
         <div>
           <h1 className="text-4xl font-black text-[var(--foreground)] mb-2 uppercase tracking-tighter italic">Configurações do <span className="text-neon-red">Sistema</span></h1>
@@ -180,6 +184,6 @@ export default function SettingsPage() {
             </div>
         </div>
       </div>
-    </BILayout>
+    </>
   );
 }

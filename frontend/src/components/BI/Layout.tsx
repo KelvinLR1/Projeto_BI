@@ -6,6 +6,17 @@ import { usePathname } from "next/navigation";
 import { useAlerts } from "@/context/AlertContext";
 import { motion, AnimatePresence } from "framer-motion";
 
+const pageVariants = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit:    { opacity: 0, y: -6 },
+};
+
+const pageTransition = {
+  duration: 0.22,
+  ease: [0.4, 0, 0.2, 1] as any,
+};
+
 export default function BILayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isMonitor = pathname === "/monitor";
@@ -78,31 +89,86 @@ export default function BILayout({ children }: { children: React.ReactNode }) {
     } catch (e) { console.error("Monitor error:", e); }
   };
 
+  // Carrega tema e accent_color do localStorage imediatamente na montagem para evitar piscada (flicker)
+  useEffect(() => {
+    const cachedTheme = localStorage.getItem("theme");
+    const cachedAccent = localStorage.getItem("accent_color");
+    if (cachedTheme) {
+      document.documentElement.setAttribute('data-theme', cachedTheme);
+    }
+    if (cachedAccent) {
+      document.documentElement.style.setProperty('--accent-color', cachedAccent);
+    }
+  }, []);
+
   useEffect(() => {
     let interval: any;
-    fetch('http://127.0.0.1:8000/api/settings')
-      .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch settings'))
-      .then(data => {
-        setAppSettings(data);
-        if (data.accent_color) document.documentElement.style.setProperty('--accent-color', data.accent_color);
-        document.documentElement.setAttribute('data-theme', data.theme || 'dark');
-        checkAlerts(data);
-        interval = setInterval(() => checkAlerts(data), (data.refresh_interval || 30) * 1000);
-      })
-      .catch(console.error);
-    return () => clearInterval(interval);
+    let timeout: any;
+    let isMounted = true;
+    let attempt = 0;
+    const MAX_ATTEMPTS = 10;
+
+    const loadSettings = () => {
+      fetch('http://127.0.0.1:8000/api/settings')
+        .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch settings'))
+        .then(data => {
+          if (!isMounted) return;
+          attempt = 0; // Reset on success
+          setAppSettings(data);
+          if (data.accent_color) {
+            document.documentElement.style.setProperty('--accent-color', data.accent_color);
+            localStorage.setItem("accent_color", data.accent_color);
+          }
+          if (data.theme) {
+            document.documentElement.setAttribute('data-theme', data.theme);
+            localStorage.setItem("theme", data.theme);
+          }
+          checkAlerts(data);
+          interval = setInterval(() => checkAlerts(data), (data.refresh_interval || 30) * 1000);
+        })
+        .catch(err => {
+          attempt++;
+          if (!isMounted || attempt >= MAX_ATTEMPTS) {
+            if (attempt >= MAX_ATTEMPTS) {
+              console.warn(`BILayout: Backend unavailable after ${MAX_ATTEMPTS} attempts. Giving up.`);
+            }
+            return;
+          }
+          const delay = Math.min(2000 * Math.pow(2, attempt - 1), 30000);
+          console.warn(`BILayout: Failed to fetch settings (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${delay / 1000}s...`, err);
+          timeout = setTimeout(loadSettings, delay);
+        });
+    };
+
+    loadSettings();
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  const { isSidebarCollapsed, toggleSidebar } = useAlerts();
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitialLoad(false);
+    }, 50);
+    return () => clearTimeout(timer);
   }, []);
 
   if (isMonitor) {
     return (
       <div className="bg-[var(--background)] min-h-screen overflow-x-hidden">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="sync">
           <motion.div
             key={pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0, y: 18, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0,  filter: 'blur(0px)' }}
+            transition={{ duration: 0.32, ease: [0.25, 0.46, 0.45, 0.94] }}
+            style={{ willChange: 'opacity, transform, filter' }}
           >
             {children}
           </motion.div>
@@ -113,16 +179,18 @@ export default function BILayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-[var(--background)] overflow-x-hidden">
-      <Sidebar />
-      <main className="flex-1 ml-64 p-6 overflow-x-hidden">
-        <AnimatePresence mode="wait">
+      <Sidebar isCollapsed={isSidebarCollapsed} onToggle={toggleSidebar} isInitialLoad={isInitialLoad} />
+      <main
+        style={{ marginLeft: isSidebarCollapsed ? 80 : 256 }}
+        className={`flex-1 p-6 overflow-x-hidden will-change-[margin-left] ${isInitialLoad ? "" : "transition-[margin-left] duration-300 ease-in-out"}`}
+      >
+        <AnimatePresence mode="sync">
           <motion.div
             key={pathname}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="h-full"
+            initial={{ opacity: 0, y: 18, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0,  filter: 'blur(0px)' }}
+            transition={{ duration: 0.32, ease: [0.25, 0.46, 0.45, 0.94] }}
+            style={{ willChange: 'opacity, transform, filter' }}
           >
             {children}
           </motion.div>

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import BILayout from '@/components/BI/Layout';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Save, 
@@ -27,7 +26,7 @@ import {
 
 export default function KpiSettingsPage() {
   const [activeTab, setActiveTab] = useState<"home" | "noc">("home");
-  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config: {columns: number, rowHeight: number}}>({ cards: [], charts: [], components: [], config: {columns: 12, rowHeight: 80} });
+  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config: {columns: number | "", rowHeight: number}}>({ cards: [], charts: [], components: [], config: {columns: 12, rowHeight: 80} });
   const [availableAssets, setAvailableAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,8 +39,8 @@ export default function KpiSettingsPage() {
     setLoading(true);
     try {
       const [homeRes, nocRes] = await Promise.all([
-        fetch('http://localhost:8000/api/layouts/home'),
-        fetch('http://localhost:8000/api/layouts/noc')
+        fetch('http://127.0.0.1:8000/api/layouts/home'),
+        fetch('http://127.0.0.1:8000/api/layouts/noc')
       ]);
       const home = await homeRes.json();
       const noc = await nocRes.json();
@@ -53,7 +52,7 @@ export default function KpiSettingsPage() {
         config: current.config || { columns: 12, rowHeight: 80 }
       });
       // Load Library Assets
-      const libRes = await fetch('http://localhost:8000/api/library');
+      const libRes = await fetch('http://127.0.0.1:8000/api/library');
       const libData = await libRes.json();
       setAvailableAssets(Array.isArray(libData) ? libData : []);
     } catch (e) { console.error(e); }
@@ -144,7 +143,7 @@ export default function KpiSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`http://localhost:8000/api/layouts/${activeTab}`, {
+      await fetch(`http://127.0.0.1:8000/api/layouts/${activeTab}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(layout)
@@ -155,7 +154,7 @@ export default function KpiSettingsPage() {
   };
 
   return (
-    <BILayout>
+    <>
       <div className="mb-10 flex justify-between items-center">
         <div>
           <h1 className="text-4xl font-black text-[var(--foreground)] mb-2 uppercase tracking-tighter italic">Designer de <span className="text-neon-red">Grade</span></h1>
@@ -184,9 +183,33 @@ export default function KpiSettingsPage() {
         </div>
       </div>
 
-      <div className={`relative bg-[var(--card-bg)] rounded-[40px] p-10 border-2 border-[var(--card-border)] overflow-hidden shadow-xl transition-all duration-500 ${activeTab === 'noc' ? 'h-[850px]' : 'min-h-[1200px]'}`} onClick={() => setSelectedAssetId(null)}>
-        {/* GRID OF GEARS */}
-        <div 
+      <div
+        className={`relative bg-[var(--card-bg)] rounded-[40px] p-10 border-2 border-[var(--card-border)] overflow-hidden shadow-xl transition-all duration-500 ${activeTab === 'noc' ? 'h-[850px]' : 'min-h-[1200px]'}`}
+        onClick={() => setSelectedAssetId(null)}
+      >
+        {/* LOADING SKELETON */}
+        <AnimatePresence>
+          {loading && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.2 } }}
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[var(--card-bg)] rounded-[40px]"
+            >
+              <motion.div
+                animate={{ opacity: [0.3, 0.7, 0.3] }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                className="w-16 h-16 rounded-3xl bg-neon-red/20 border-2 border-neon-red/30 flex items-center justify-center"
+              >
+                <RefreshCcw size={24} className="text-neon-red" />
+              </motion.div>
+              <p className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Carregando layout...</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* GRID OF CELLS */}
+        <div
           className={`absolute inset-0 grid gap-4 p-10`}
           style={{ gridTemplateColumns: `repeat(${layout.config?.columns || 12}, minmax(0, 1fr))`, gridAutoRows: `${layout.config?.rowHeight || 80}px` }}
         >
@@ -194,28 +217,31 @@ export default function KpiSettingsPage() {
             const cols = layout.config?.columns || 12;
             const x = (i % cols) + 1; const y = Math.floor(i / cols) + 1;
             const isOccupied = [...layout.cards, ...layout.charts, ...layout.components].some(a => x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h);
-            if (isOccupied) return <div key={i} />; // Ocupado, não mostrar nada
+            if (isOccupied) return <div key={i} />;
             return (
-                <button key={i} onClick={(e) => { e.stopPropagation(); setSelectedCell({x,y}); setShowSelector(true); }} className="rounded-xl border border-[var(--card-border)] bg-[var(--input-bg)] hover:border-neon-red/30 hover:bg-neon-red/5 transition-all flex items-center justify-center group shadow-inner">
-                    <Plus size={14} className="text-[var(--text-secondary)] opacity-10 group-hover:text-neon-red group-hover:opacity-100 transition-opacity" />
-                </button>
+              <button key={i} onClick={(e) => { e.stopPropagation(); setSelectedCell({x,y}); setShowSelector(true); }} className="rounded-xl border border-[var(--card-border)] bg-[var(--input-bg)] hover:border-neon-red/30 hover:bg-neon-red/5 transition-all flex items-center justify-center group shadow-inner">
+                <Plus size={14} className="text-[var(--text-secondary)] opacity-10 group-hover:text-neon-red group-hover:opacity-100 transition-opacity" />
+              </button>
             );
           })}
         </div>
 
-        {/* ASSETS CONTAINER */}
-        <div 
-          className={`relative grid gap-4 pointer-events-none`}
-          style={{ gridTemplateColumns: `repeat(${layout.config?.columns || 12}, minmax(0, 1fr))`, gridAutoRows: `${layout.config?.rowHeight || 80}px` }}
-        >
+        {/* ASSETS CONTAINER — fade in uma vez após carregar */}
+        <AnimatePresence>
           {!loading && (
-            <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="relative grid gap-4 pointer-events-none"
+              style={{ gridTemplateColumns: `repeat(${layout.config?.columns || 12}, minmax(0, 1fr))`, gridAutoRows: `${layout.config?.rowHeight || 80}px` }}
+            >
               {layout.cards.map((kpi) => <CleanAsset key={kpi.id} type="cards" item={kpi} icon={Zap} isSelected={selectedAssetId === kpi.id} onSelect={setSelectedAssetId} />)}
               {layout.charts.map((chart) => <CleanAsset key={chart.id} type="charts" item={chart} icon={TrendingUp} isSelected={selectedAssetId === chart.id} onSelect={setSelectedAssetId} />)}
               {layout.components.map((comp) => <CleanAsset key={comp.id} type="components" item={comp} icon={AlertCircle} isSelected={selectedAssetId === comp.id} onSelect={setSelectedAssetId} />)}
-            </>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
 
       {/* DRAGGABLE CONTROL PALETTE */}
@@ -374,8 +400,8 @@ export default function KpiSettingsPage() {
                                                     if (!canPlace) return;
                                                     const newAsset = { ...asset, x: selectedCell!.x, y: selectedCell!.y, w: asset.w || 3, h: asset.h || 1 };
                                                     const typeMap = { kpi: 'cards', charts: 'charts', components: 'components' };
-                                                    const type = typeMap[asset.type as keyof typeof typeMap] || 'components';
-                                                    setLayout(prev => ({ ...prev, [type]: [...prev[type as keyof typeof prev], newAsset] }));
+                                                    const type = (typeMap[asset.type as keyof typeof typeMap] || 'components') as 'cards' | 'charts' | 'components';
+                                                    setLayout(prev => ({ ...prev, [type]: [...prev[type], newAsset] }));
                                                     setShowSelector(false);
                                                 }} 
                                                 className={`group relative h-64 rounded-[40px] border transition-all cursor-pointer overflow-hidden flex flex-col ${
@@ -474,7 +500,7 @@ export default function KpiSettingsPage() {
             </>
         )}
       </AnimatePresence>
-    </BILayout>
+    </>
   );
 }
 

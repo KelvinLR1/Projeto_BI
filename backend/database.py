@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 import os
 import time
 import functools
@@ -147,6 +147,43 @@ class AssetLibraryManager:
         return True
 
 class DataManager:
+    @staticmethod
+    def get_schema():
+        if Config.get_app_mode() == "DEMO":
+            return {
+                "db_type": Config.DB_TYPE,
+                "app_mode": "DEMO",
+                "tables": {
+                    "Sales_Detailed": ["id", "date", "value", "revenue", "sales", "churn", "faturamento", "region"],
+                    "Inventory": ["id", "product_name", "stock_level", "warehouse_location", "last_restock"],
+                    "Customers": ["id", "name", "email", "country", "status", "signup_date"]
+                }
+            }
+        
+        try:
+            engine = create_engine(Config.get_db_url())
+            inspector = inspect(engine)
+            schema = {
+                "db_type": Config.DB_TYPE,
+                "app_mode": Config.get_app_mode(),
+                "tables": {}
+            }
+            for table_name in inspector.get_table_names():
+                columns = [col["name"] for col in inspector.get_columns(table_name)]
+                schema["tables"][table_name] = columns
+            for view_name in inspector.get_view_names():
+                columns = [col["name"] for col in inspector.get_columns(view_name)]
+                schema["tables"][view_name] = columns
+            return schema
+        except Exception as e:
+            logger.error(f"Erro ao obter esquema do banco de dados: {str(e)}")
+            return {
+                "db_type": Config.DB_TYPE,
+                "app_mode": Config.get_app_mode(),
+                "tables": {},
+                "error": str(e)
+            }
+
     @staticmethod
     @log_performance
     def get_dynamic_kpi_data(card_config: dict):

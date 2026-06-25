@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import BILayout from '@/components/BI/Layout';
 import KpiCard from '@/components/BI/KpiCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -36,7 +35,7 @@ export default function KpiDesignerPage() {
   const [previewTrend, setPreviewTrend] = useState(0);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/scripts')
+    fetch('http://127.0.0.1:8000/api/scripts')
       .then(res => res.json())
       .then(data => setScripts(Array.isArray(data) ? data : []));
   }, []);
@@ -51,7 +50,7 @@ export default function KpiDesignerPage() {
 
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/scripts/execute', {
+      const res = await fetch('http://127.0.0.1:8000/api/scripts/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: script.query })
@@ -76,7 +75,7 @@ export default function KpiDesignerPage() {
         return alert("Preencha o título, selecione o script e a coluna do valor!");
     }
 
-    const currentLayout = await fetch(`http://localhost:8000/api/layouts/${targetPage}`).then(res => res.json());
+    const currentLayout = await fetch(`http://127.0.0.1:8000/api/layouts/${targetPage}`).then(res => res.json());
     const layoutObj = Array.isArray(currentLayout) ? { cards: currentLayout, charts: [] } : currentLayout;
     if (!layoutObj.cards) layoutObj.cards = [];
 
@@ -92,7 +91,7 @@ export default function KpiDesignerPage() {
 
     layoutObj.cards.push(newKpiConfig);
 
-    await fetch(`http://localhost:8000/api/layouts/${targetPage}`, {
+    await fetch(`http://127.0.0.1:8000/api/layouts/${targetPage}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(layoutObj)
@@ -119,7 +118,7 @@ export default function KpiDesignerPage() {
   };
 
   return (
-    <BILayout>
+    <>
       <div className="mb-12 flex justify-between items-center">
         <div>
           <h1 className="text-4xl font-black text-[var(--foreground)] mb-2 tracking-tighter uppercase italic">Designer de <span className="text-neon-red">Métricas KPI</span></h1>
@@ -291,6 +290,6 @@ export default function KpiDesignerPage() {
             </div>
         </div>
       </div>
-    </BILayout>
+    </>
   );
 }

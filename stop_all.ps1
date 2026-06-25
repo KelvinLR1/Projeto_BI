@@ -26,6 +26,6 @@ try {
 
 # Cleanup adicional por nome de processo (Garantia)
 Get-Process "node" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process "python" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process "python*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Host "✅ Todos os serviços foram interrompidos com sucesso." -ForegroundColor Green

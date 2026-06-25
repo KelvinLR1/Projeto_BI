@@ -43,6 +43,10 @@ async def get_reports():
 async def get_scripts():
     return ScriptManager.get_all()
 
+@app.get("/api/schema")
+async def get_schema():
+    return DataManager.get_schema()
+
 @app.post("/api/scripts")
 async def save_script(data: dict = Body(...)):
     name = data.get("name")

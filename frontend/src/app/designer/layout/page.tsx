@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import BILayout from '@/components/BI/Layout';
 import { motion, useMotionValue } from 'framer-motion';
 import { 
   LayoutGrid, 
@@ -15,6 +14,7 @@ import {
   Monitor
 } from 'lucide-react';
 import Link from 'next/link';
+import { clearCache } from '@/utils/api';
 
 export default function LayoutDesignerPage() {
   const [layout, setLayout] = useState<any>({ cards: [], charts: [], components: [] });
@@ -24,7 +24,7 @@ export default function LayoutDesignerPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`http://localhost:8000/api/layouts/${targetPage}`)
+    fetch(`http://127.0.0.1:8000/api/layouts/${targetPage}`)
       .then(res => res.json())
       .then(data => {
         const formatted = Array.isArray(data) ? { cards: data, charts: [] } : data;
@@ -64,11 +64,12 @@ export default function LayoutDesignerPage() {
   };
 
   const handleSave = async () => {
-    await fetch(`http://localhost:8000/api/layouts/${targetPage}`, {
+    await fetch(`http://127.0.0.1:8000/api/layouts/${targetPage}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(layout)
     });
+    clearCache();
     alert("Layout salvo com sucesso!");
   };
 
@@ -95,7 +96,7 @@ export default function LayoutDesignerPage() {
   };
 
   return (
-    <BILayout>
+    <>
       <div className="mb-8 flex justify-between items-center">
         <div>
           <div className="flex items-center gap-4 mb-2">
@@ -328,6 +329,6 @@ export default function LayoutDesignerPage() {
               <p className="text-sm text-[var(--text-secondary)]">Clique e segure para arrastar os blocos. Use os controles de <span className="text-neon-red font-black">+/-</span> que aparecem ao passar o mouse para redimensionar. Lembre-se de salvar antes de sair.</p>
           </div>
       </div>
-    </BILayout>
+    </>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { fetchWithCache, clearCache } from '@/utils/api';
 import Link from 'next/link';
-import BILayout from '@/components/BI/Layout';
 import KpiCard from '@/components/BI/KpiCard';
+import { useAlerts } from '@/context/AlertContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, 
@@ -32,10 +33,12 @@ import {
 import { 
   BarChart as ReBarChart, Bar, LineChart as ReLineChart, Line, 
   PieChart as RePieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend 
 } from 'recharts';
+import SafeResponsiveContainer from '@/components/BI/SafeResponsiveContainer';
 
 export default function DesignerPage() {
+  const { isSidebarTransitioning } = useAlerts();
   const [activeTab, setActiveTab] = useState<"charts" | "kpis" | "components">("charts");
   const [scripts, setScripts] = useState<any[]>([]);
   const [savedAssets, setSavedAssets] = useState<any[]>([]);
@@ -94,17 +97,17 @@ export default function DesignerPage() {
 
   const loadScripts = async () => {
     try {
-        const res = await fetch('http://localhost:8000/api/scripts');
-        const data = await res.json();
-        setScripts(Array.isArray(data) ? data : []);
+        await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts', undefined, (data) => {
+          setScripts(Array.isArray(data) ? data : []);
+        });
     } catch (e) { setScripts([]); }
   };
 
   const loadAssets = async () => {
     try {
-        const res = await fetch('http://localhost:8000/api/library');
-        const data = await res.json();
-        setSavedAssets(Array.isArray(data) ? data : []);
+        await fetchWithCache<any[]>('http://127.0.0.1:8000/api/library', undefined, (data) => {
+          setSavedAssets(Array.isArray(data) ? data : []);
+        });
     } catch (e) { setSavedAssets([]); }
   };
 
@@ -119,18 +122,18 @@ export default function DesignerPage() {
     if (!script) return;
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/scripts/execute', {
+      await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: script.query })
+      }, (result) => {
+        setRawData(result);
+        if (result.length > 0 && !preserveConfig) {
+          const keys = Object.keys(result[0]);
+          if (activeTab === 'charts') { setXAxis(keys[0] || ""); setSelectedYAxes([keys[1] || ""]); }
+          else { setSelectedKpiColumn(keys[0]); }
+        }
       });
-      const result = await res.json();
-      setRawData(result);
-      if (result.length > 0 && !preserveConfig) {
-        const keys = Object.keys(result[0]);
-        if (activeTab === 'charts') { setXAxis(keys[0] || ""); setSelectedYAxes([keys[1] || ""]); }
-        else { setSelectedKpiColumn(keys[0]); }
-      }
     } finally { setLoading(false); }
   };
 
@@ -167,33 +170,129 @@ export default function DesignerPage() {
     }
   };
 
+  const syncAssetToLayout = async ({ id, type, page, data }: { id: string, type: 'cards' | 'charts' | 'components', page: 'home' | 'noc', data: any }) => {
+    const targetPages: ('home' | 'noc')[] = ['home', 'noc'];
+    
+    for (const pageName of targetPages) {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/api/layouts/${pageName}`);
+        if (!res.ok) continue;
+        const layout = await res.json();
+        
+        if (!layout.cards) layout.cards = [];
+        if (!layout.charts) layout.charts = [];
+        if (!layout.components) layout.components = [];
+        
+        let changed = false;
+        
+        if (pageName === page) {
+          const index = layout[type].findIndex((i: any) => i.id === id);
+          if (index !== -1) {
+            const existing = layout[type][index];
+            layout[type][index] = { 
+              ...existing, 
+              ...data,
+              x: existing.x || data.x || 1,
+              y: existing.y || data.y || 1,
+              w: existing.w || data.w || 3,
+              h: existing.h || data.h || 1
+            };
+          } else {
+            layout[type].push({
+              ...data,
+              x: data.x || 1,
+              y: data.y || 1
+            });
+          }
+          changed = true;
+        } else {
+          const index = layout[type].findIndex((i: any) => i.id === id);
+          if (index !== -1) {
+            layout[type] = layout[type].filter((i: any) => i.id !== id);
+            changed = true;
+          }
+        }
+        
+        if (changed) {
+          await fetch(`http://127.0.0.1:8000/api/layouts/${pageName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(layout)
+          });
+        }
+      } catch (e) {
+        console.error("Erro ao sincronizar layout para " + pageName, e);
+      }
+    }
+    clearCache();
+  };
+
   const handleDeleteAsset = async (e: React.MouseEvent, asset: any) => {
     e.stopPropagation();
     if (!confirm(`Excluir "${asset.title}"?`)) return;
-    await fetch(`http://localhost:8000/api/library/${asset.id}`, { method: 'DELETE' });
+    
+    await fetch(`http://127.0.0.1:8000/api/library/${asset.id}`, { method: 'DELETE' });
+    
+    const typeMap: Record<string, string> = {
+      'charts': 'charts',
+      'kpi': 'cards',
+      'components': 'components'
+    };
+    const layoutType = typeMap[asset.type] || 'components';
+    
+    for (const pageName of ['home', 'noc']) {
+      try {
+        const layoutRes = await fetch(`http://127.0.0.1:8000/api/layouts/${pageName}`);
+        if (layoutRes.ok) {
+          const layout = await layoutRes.json();
+          if (layout && layout[layoutType]) {
+            const initialLen = layout[layoutType].length;
+            layout[layoutType] = layout[layoutType].filter((i: any) => i.id !== asset.id);
+            if (layout[layoutType].length !== initialLen) {
+              await fetch(`http://127.0.0.1:8000/api/layouts/${pageName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(layout)
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    clearCache();
     loadAssets();
   };
 
   const handleSaveChart = async () => {
     if (!chartName || !selectedScriptId || !xAxis || !selectedYAxes.length) return alert("Preencha tudo!");
+    const id = editingId || `chart-${Date.now()}`;
+    const page = targetPageChart;
     const config = { 
-        id: editingId || `chart-${Date.now()}`, 
+        id, 
         type: 'charts', 
         title: chartName, 
         script_id: selectedScriptId, 
         chartType, 
         xAxis, 
         yAxes: selectedYAxes, 
-        w: 6, h: 4 
+        w: 6, h: 4,
+        page
     };
-    await fetch('http://localhost:8000/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
-    alert("Gráfico Salvo na Biblioteca!"); loadAssets();
+    await fetch('http://127.0.0.1:8000/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+    await syncAssetToLayout({ id, type: 'charts', page, data: config });
+    alert("Gráfico Salvo!"); 
+    setEditingId(null);
+    loadAssets();
   };
 
   const handleSaveKpi = async () => {
     if (!kpiTitle || !selectedScriptId || !selectedKpiColumn) return alert("Preencha tudo!");
+    const id = editingId || `kpi-${Date.now()}`;
+    const page = targetPageKpi;
     const config = { 
-        id: editingId || `kpi-${Date.now()}`, 
+        id, 
         type: 'kpi', 
         title: kpiTitle, 
         kpi_mode: kpiMode, 
@@ -201,25 +300,35 @@ export default function DesignerPage() {
         column: selectedKpiColumn, 
         threshold_success: thresholdSuccess, 
         threshold_warning: thresholdWarning, 
-        w: 3, h: 1 
+        w: 3, h: 1,
+        page
     };
-    await fetch('http://localhost:8000/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
-    alert("KPI Salvo na Biblioteca!"); loadAssets();
+    await fetch('http://127.0.0.1:8000/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+    await syncAssetToLayout({ id, type: 'cards', page, data: config });
+    alert("KPI Salvo!"); 
+    setEditingId(null);
+    loadAssets();
   };
 
   const handleSaveComp = async () => {
     if (!compTitle) return alert("Dê um título!");
     if (compType === 'report' && !compScriptId) return alert("Escolha uma fonte de dados para o relatório!");
+    const id = editingId || `comp-${Date.now()}`;
+    const page = targetPageComp;
     const config: any = { 
-        id: editingId || `comp-${Date.now()}`, 
+        id, 
         type: 'components', 
         compType: compType, 
         title: compTitle, 
-        w: compType === 'report' ? 6 : 4, h: 4 
+        w: compType === 'report' ? 6 : 4, h: 4,
+        page
     };
     if (compType === 'report') config.script_id = compScriptId;
-    await fetch('http://localhost:8000/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
-    alert("Componente Salvo na Biblioteca!"); loadAssets();
+    await fetch('http://127.0.0.1:8000/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+    await syncAssetToLayout({ id, type: 'components', page, data: config });
+    alert("Componente Salvo!"); 
+    setEditingId(null);
+    loadAssets();
   };
 
   const COLORS = ['#ff2d55', '#00ff88', '#ffb700', '#3b82f6', '#8b5cf6', '#ec4899', '#10b981'];
@@ -351,7 +460,7 @@ export default function DesignerPage() {
   };
 
   return (
-    <BILayout>
+    <>
       <div className="mb-6 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-black text-[var(--foreground)] mb-2 uppercase tracking-tighter italic">Designer de <span className="text-neon-red">Ativos</span></h1>
@@ -428,7 +537,7 @@ export default function DesignerPage() {
                                 </div>
                             </div>
                         </div>
-                        <div className="glass-card p-8 bg-[var(--card-bg)] border-[var(--card-border)] flex flex-col shadow-sm"><h3 className="text-xl font-black text-[var(--foreground)] uppercase tracking-tighter italic mb-8">Preview</h3><div className="flex-1 w-full bg-[var(--background)] rounded-3xl p-6 border border-[var(--card-border)] shadow-inner">{processedChartData.length > 0 ? (chartType === 'ranking' && selectedYAxes.length > 0 ? (<RankingPreview data={processedChartData} nameKey={xAxis} valueKey={selectedYAxes[0]} />) : chartType === 'pie' && selectedYAxes.length > 0 ? (<DonutPreview data={processedChartData} nameKey={xAxis} valueKey={selectedYAxes[0]} />) : (<ResponsiveContainer width="100%" height="100%">{chartType === 'bar' ? (<ReBarChart data={processedChartData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} /><XAxis dataKey={xAxis} stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><Tooltip cursor={{ fill: 'rgba(128,128,128,0.05)' }} contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--neon-red)", borderRadius: "12px", color: "var(--foreground)" }} />{selectedYAxes.map((y, i) => <Bar key={y} dataKey={y} fill={COLORS[i % COLORS.length]} radius={[4, 4, 0, 0]} />)}</ReBarChart>) : (<ReLineChart data={processedChartData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} /><XAxis dataKey={xAxis} stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><Tooltip cursor={{ fill: 'rgba(128,128,128,0.05)' }} contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--neon-red)", borderRadius: "12px", color: "var(--foreground)" }} />{selectedYAxes.map((y, i) => <Line key={y} type="monotone" dataKey={y} stroke={COLORS[i % COLORS.length]} strokeWidth={3} dot={{ r: 4 }} />)}</ReLineChart>)}</ResponsiveContainer>)) : (<div className="h-full flex items-center justify-center opacity-10"><BarChart size={100} className="text-[var(--foreground)]" /></div>)}</div></div>
+                        <div className="glass-card p-8 bg-[var(--card-bg)] border-[var(--card-border)] flex flex-col shadow-sm"><h3 className="text-xl font-black text-[var(--foreground)] uppercase tracking-tighter italic mb-8">Preview</h3><div className="flex-1 w-full bg-[var(--background)] rounded-3xl p-6 border border-[var(--card-border)] shadow-inner">{processedChartData.length > 0 ? (chartType === 'ranking' && selectedYAxes.length > 0 ? (<RankingPreview data={processedChartData} nameKey={xAxis} valueKey={selectedYAxes[0]} />) : chartType === 'pie' && selectedYAxes.length > 0 ? (<DonutPreview data={processedChartData} nameKey={xAxis} valueKey={selectedYAxes[0]} />) : (<SafeResponsiveContainer width="100%" height="100%" minWidth={0} debounce={isSidebarTransitioning ? 1000 : 150}>{chartType === 'bar' ? (<ReBarChart data={processedChartData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} /><XAxis dataKey={xAxis} stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><Tooltip cursor={{ fill: 'rgba(128,128,128,0.05)' }} contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--neon-red)", borderRadius: "12px", color: "var(--foreground)" }} />{selectedYAxes.map((y, i) => <Bar key={y} dataKey={y} fill={COLORS[i % COLORS.length]} radius={[4, 4, 0, 0]} />)}</ReBarChart>) : (<ReLineChart data={processedChartData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} /><XAxis dataKey={xAxis} stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} /><Tooltip cursor={{ fill: 'rgba(128,128,128,0.05)' }} contentStyle={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--neon-red)", borderRadius: "12px", color: "var(--foreground)" }} />{selectedYAxes.map((y, i) => <Line key={y} type="monotone" dataKey={y} stroke={COLORS[i % COLORS.length]} strokeWidth={3} dot={{ r: 4 }} />)}</ReLineChart>)}</SafeResponsiveContainer>)) : (<div className="h-full flex items-center justify-center opacity-10"><BarChart size={100} className="text-[var(--foreground)]" /></div>)}</div></div>
                     </motion.div>
                 )}
 
@@ -499,6 +608,6 @@ export default function DesignerPage() {
             </AnimatePresence>
          </div>
       </div>
-    </BILayout>
+    </>
   );
 }
