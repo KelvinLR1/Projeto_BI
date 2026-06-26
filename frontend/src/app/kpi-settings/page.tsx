@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchWithCache, readCache } from '@/utils/api';
 import { 
   Save, 
   Trash2, 
@@ -26,9 +27,19 @@ import {
 
 export default function KpiSettingsPage() {
   const [activeTab, setActiveTab] = useState<"home" | "noc">("home");
-  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config: {columns: number | "", rowHeight: number}}>({ cards: [], charts: [], components: [], config: {columns: 12, rowHeight: 80} });
-  const [availableAssets, setAvailableAssets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Inicializa do cache síncrono para evitar flash na grade
+  const cachedHomeLayout = readCache<any>('http://127.0.0.1:8000/api/layouts/home');
+  const cachedLibrary = readCache<any[]>('http://127.0.0.1:8000/api/library');
+  const hasCachedData = !!(cachedHomeLayout && cachedLibrary);
+
+  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config: {columns: number | "", rowHeight: number}}>(
+    cachedHomeLayout
+      ? { cards: cachedHomeLayout.cards || [], charts: cachedHomeLayout.charts || [], components: cachedHomeLayout.components || [], config: cachedHomeLayout.config || { columns: 12, rowHeight: 80 } }
+      : { cards: [], charts: [], components: [], config: {columns: 12, rowHeight: 80} }
+  );
+  const [availableAssets, setAvailableAssets] = useState<any[]>(cachedLibrary ?? []);
+  const [loading, setLoading] = useState(!hasCachedData);
   const [saving, setSaving] = useState(false);
   
   const [showSelector, setShowSelector] = useState(false);
@@ -38,12 +49,11 @@ export default function KpiSettingsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [homeRes, nocRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/layouts/home'),
-        fetch('http://127.0.0.1:8000/api/layouts/noc')
+      const [home, noc, libData] = await Promise.all([
+        fetchWithCache<any>('http://127.0.0.1:8000/api/layouts/home'),
+        fetchWithCache<any>('http://127.0.0.1:8000/api/layouts/noc'),
+        fetchWithCache<any[]>('http://127.0.0.1:8000/api/library'),
       ]);
-      const home = await homeRes.json();
-      const noc = await nocRes.json();
       const current = activeTab === 'home' ? home : noc;
       setLayout({
         cards: Array.isArray(current.cards) ? current.cards : [],
@@ -51,9 +61,6 @@ export default function KpiSettingsPage() {
         components: Array.isArray(current.components) ? current.components : [],
         config: current.config || { columns: 12, rowHeight: 80 }
       });
-      // Load Library Assets
-      const libRes = await fetch('http://127.0.0.1:8000/api/library');
-      const libData = await libRes.json();
       setAvailableAssets(Array.isArray(libData) ? libData : []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import CustomSelect from '@/components/BI/CustomSelect';
 import Link from 'next/link';
 import KpiCard from '@/components/BI/KpiCard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -154,27 +155,23 @@ export default function KpiDesignerPage() {
 
                     <div>
                         <label className="block text-[10px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">2. Dataset (Script SQL)</label>
-                        <select 
+                        <CustomSelect
                             value={selectedScriptId}
-                            onChange={(e) => handleScriptSelect(e.target.value)}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50 appearance-none cursor-pointer"
-                        >
-                            <option value="">-- Selecione o Script --</option>
-                            {scripts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
+                            onChange={handleScriptSelect}
+                            options={scripts.map(s => ({ value: s.id, label: s.name }))}
+                            placeholder="-- Selecione o Script --"
+                        />
                     </div>
 
                     <AnimatePresence>
                         {dataColumns.length > 0 && (
                             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
                                 <label className="block text-[10px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">3. Coluna do Valor</label>
-                                <select 
+                                <CustomSelect
                                     value={selectedColumn}
-                                    onChange={(e) => setSelectedColumn(e.target.value)}
-                                    className="w-full bg-neon-red/10 border border-neon-red/20 rounded-xl px-4 py-3 text-sm text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50 appearance-none cursor-pointer"
-                                >
-                                    {dataColumns.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
+                                    onChange={setSelectedColumn}
+                                    options={dataColumns.map(c => ({ value: c, label: c }))}
+                                />
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -213,14 +210,14 @@ export default function KpiDesignerPage() {
 
                     <div className="pt-6 border-t border-[var(--card-border)] space-y-4">
                         <label className="block text-[10px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">5. Destino no Dashboard</label>
-                        <select 
+                        <CustomSelect
                             value={targetPage}
-                            onChange={(e) => setTargetPage(e.target.value as any)}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--foreground)] font-bold outline-none"
-                        >
-                            <option value="home">Página Principal (Home)</option>
-                            <option value="noc">Monitoramento (NOC)</option>
-                        </select>
+                            onChange={(v) => setTargetPage(v as any)}
+                            options={[
+                                { value: 'home', label: 'Página Principal (Home)' },
+                                { value: 'noc', label: 'Monitoramento (NOC)' }
+                            ]}
+                        />
                         <button 
                             onClick={handleSaveKpi}
                             className="w-full bg-[var(--foreground)] text-[var(--background)] font-black py-4 rounded-2xl text-xs uppercase tracking-widest hover:bg-neon-red hover:text-white transition-all shadow-xl flex items-center justify-center gap-3 group"

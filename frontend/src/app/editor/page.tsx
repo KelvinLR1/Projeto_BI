@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import CustomSelect from '@/components/BI/CustomSelect';
 import { fetchWithCache } from '@/utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -293,23 +294,19 @@ export default function ScriptEditor() {
                       </div>
                       <p className="text-[10px] text-gray-500 font-medium">Selecione a tabela base para iniciar sua extração de dados.</p>
                     </div>
-                    <select
-                      value={selectedTable}
-                      onChange={e => {
-                        setSelectedTable(e.target.value);
-                        setSelectedColumns([]);
-                        setJoins([]);
-                        setCalculations([]);
-                        setFilters([]);
-                        setOrderByColumn("");
-                      }}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-neon-red/50 transition-all cursor-pointer text-white"
-                    >
-                      <option value="" className="bg-[#0b0e14]">Selecione uma tabela...</option>
-                      {schema && schema.tables && Object.keys(schema.tables).map(t => (
-                        <option key={t} value={t} className="bg-[#0b0e14]">{t}</option>
-                      ))}
-                    </select>
+                    <CustomSelect
+                       value={selectedTable}
+                       onChange={v => {
+                         setSelectedTable(v);
+                         setSelectedColumns([]);
+                         setJoins([]);
+                         setCalculations([]);
+                         setFilters([]);
+                         setOrderByColumn("");
+                       }}
+                       options={schema && schema.tables ? Object.keys(schema.tables).map(t => ({ value: t, label: t })) : []}
+                       placeholder="Selecione uma tabela..."
+                     />
                   </div>
 
                   {/* Card Relações (Joins) */}
@@ -358,35 +355,9 @@ export default function ScriptEditor() {
                                   >
                                     {/* Join Header */}
                                     <div className="flex flex-wrap items-center gap-3">
-                                      <select
-                                        value={j.joinType}
-                                        onChange={e => {
-                                          const next = [...joins];
-                                          next[index].joinType = e.target.value as any;
-                                          setJoins(next);
-                                        }}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer"
-                                      >
-                                        <option value="LEFT JOIN" className="bg-[#0b0e14]">LEFT JOIN</option>
-                                        <option value="INNER JOIN" className="bg-[#0b0e14]">INNER JOIN</option>
-                                      </select>
+                                      <CustomSelect compact value={j.joinType} onChange={v => { const next = [...joins]; next[index].joinType = v as any; setJoins(next); }} options={[{ value: 'LEFT JOIN', label: 'LEFT JOIN' }, { value: 'INNER JOIN', label: 'INNER JOIN' }]} />
 
-                                      <select
-                                        value={j.table}
-                                        onChange={e => {
-                                          const next = [...joins];
-                                          next[index].table = e.target.value;
-                                          // Reset conditions when table changes, initialize with one empty condition
-                                          next[index].conditions = [{ onLeft: "", onRight: "" }];
-                                          setJoins(next);
-                                        }}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer min-w-[150px]"
-                                      >
-                                        <option value="" className="bg-[#0b0e14]">Tabela...</option>
-                                        {schema && schema.tables && Object.keys(schema.tables).filter(t => t !== selectedTable).map(t => (
-                                          <option key={t} value={t} className="bg-[#0b0e14]">{t}</option>
-                                        ))}
-                                      </select>
+                                      <CustomSelect compact value={j.table} onChange={v => { const next = [...joins]; next[index].table = v; next[index].conditions = [{ onLeft: '', onRight: '' }]; setJoins(next); }} options={schema && schema.tables ? Object.keys(schema.tables).filter(t => t !== selectedTable).map(t => ({ value: t, label: t })) : []} placeholder="Tabela..." className="min-w-[150px]" />
 
                                       <button
                                         type="button"
@@ -425,43 +396,11 @@ export default function ScriptEditor() {
                                               )}
                                               <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest select-none">ON</span>
-                                                <select
-                                                  value={cond.onLeft}
-                                                  onChange={e => {
-                                                    const next = [...joins];
-                                                    next[index].conditions[condIdx].onLeft = e.target.value;
-                                                    setJoins(next);
-                                                  }}
-                                                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer max-w-[200px]"
-                                                >
-                                                  <option value="" className="bg-[#0b0e14]">Coluna da Tabela Principal...</option>
-                                                  {schema.tables[selectedTable]?.map((c: string) => (
-                                                    <option key={c} value={`${selectedTable}.${c}`} className="bg-[#0b0e14]">{selectedTable}.{c}</option>
-                                                  ))}
-                                                  {joins.slice(0, index).map(prevJoin => {
-                                                    if (!prevJoin.table || !schema.tables[prevJoin.table]) return null;
-                                                    return schema.tables[prevJoin.table].map((c: string) => (
-                                                      <option key={c} value={`${prevJoin.table}.${c}`} className="bg-[#0b0e14]">{prevJoin.table}.{c}</option>
-                                                    ));
-                                                  })}
-                                                </select>
+                                                <CustomSelect compact value={cond.onLeft} onChange={v => { const next = [...joins]; next[index].conditions[condIdx].onLeft = v; setJoins(next); }} options={[ ...(schema.tables[selectedTable]?.map((c: string) => ({ value: `${selectedTable}.${c}`, label: `${selectedTable}.${c}` })) || []), ...joins.slice(0, index).flatMap(pj => !pj.table || !schema.tables[pj.table] ? [] : schema.tables[pj.table].map((c: string) => ({ value: `${pj.table}.${c}`, label: `${pj.table}.${c}` }))) ]} placeholder="Coluna da Tabela Principal..." className="max-w-[200px]" />
 
                                                 <span className="text-gray-600 text-xs font-bold select-none">=</span>
 
-                                                <select
-                                                  value={cond.onRight}
-                                                  onChange={e => {
-                                                    const next = [...joins];
-                                                    next[index].conditions[condIdx].onRight = e.target.value;
-                                                    setJoins(next);
-                                                  }}
-                                                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer max-w-[200px]"
-                                                >
-                                                  <option value="" className="bg-[#0b0e14]">Coluna de {j.table}...</option>
-                                                  {schema.tables[j.table]?.map((c: string) => (
-                                                    <option key={c} value={c} className="bg-[#0b0e14]">{c}</option>
-                                                  ))}
-                                                </select>
+                                                <CustomSelect compact value={cond.onRight} onChange={v => { const next = [...joins]; next[index].conditions[condIdx].onRight = v; setJoins(next); }} options={schema.tables[j.table]?.map((c: string) => ({ value: c, label: c })) || []} placeholder={`Coluna de ${j.table}...`} className="max-w-[200px]" />
 
                                                 {j.conditions.length > 1 && (
                                                   <button
@@ -744,34 +683,9 @@ export default function ScriptEditor() {
                                       transition={{ duration: 0.2 }}
                                       className="flex items-center gap-3 bg-white/[0.01] border border-white/5 p-3 rounded-xl flex-wrap md:flex-nowrap overflow-hidden"
                                     >
-                                      <select
-                                        value={f.column}
-                                        onChange={e => {
-                                          const next = [...filters];
-                                          next[index].column = e.target.value;
-                                          setFilters(next);
-                                        }}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer flex-1"
-                                      >
-                                        <option value="" className="bg-[#0b0e14]">Coluna...</option>
-                                        {availableColumns.map(col => (
-                                          <option key={col.fullName} value={col.fullName} className="bg-[#0b0e14]">{col.fullName}</option>
-                                        ))}
-                                      </select>
+                                      <CustomSelect compact value={f.column} onChange={v => { const next = [...filters]; next[index].column = v; setFilters(next); }} options={availableColumns.map(col => ({ value: col.fullName, label: col.fullName }))} placeholder="Coluna..." className="flex-1" />
 
-                                      <select
-                                        value={f.operator}
-                                        onChange={e => {
-                                          const next = [...filters];
-                                          next[index].operator = e.target.value;
-                                          setFilters(next);
-                                        }}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer w-28"
-                                      >
-                                        {["=", "!=", ">", "<", ">=", "<=", "LIKE", "IS NULL", "IS NOT NULL"].map(op => (
-                                          <option key={op} value={op} className="bg-[#0b0e14]">{op}</option>
-                                        ))}
-                                      </select>
+                                      <CustomSelect compact value={f.operator} onChange={v => { const next = [...filters]; next[index].operator = v; setFilters(next); }} options={['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IS NULL', 'IS NOT NULL'].map(op => ({ value: op, label: op }))} className="w-28" />
 
                                       {f.operator !== "IS NULL" && f.operator !== "IS NOT NULL" ? (
                                         <input
@@ -827,16 +741,7 @@ export default function ScriptEditor() {
                             <div className="space-y-2">
                               <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Ordenar por</label>
                               <div className="flex gap-2">
-                                <select
-                                  value={orderByColumn}
-                                  onChange={e => setOrderByColumn(e.target.value)}
-                                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer"
-                                >
-                                  <option value="" className="bg-[#0b0e14]">Nenhum...</option>
-                                  {availableColumns.map(col => (
-                                    <option key={col.fullName} value={col.fullName} className="bg-[#0b0e14]">{col.fullName}</option>
-                                  ))}
-                                </select>
+                                <CustomSelect compact value={orderByColumn} onChange={setOrderByColumn} options={[{ value: '', label: 'Nenhum...' }, ...availableColumns.map(col => ({ value: col.fullName, label: col.fullName }))]} className="flex-1" />
                                 {orderByColumn && (
                                   <button
                                     type="button"

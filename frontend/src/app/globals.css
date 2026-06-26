@@ -22,6 +22,9 @@
   --input-bg: rgba(255, 255, 255, 0.05);
   --neon-red: #ff2d55;
   --table-header-bg: #0f131a;
+  /* Dropdown — cor sólida para não vazar conteúdo por transparência */
+  --dropdown-bg: #13171f;
+  --dropdown-border: rgba(255, 255, 255, 0.12);
 }
 
 [data-theme='light'] {
@@ -37,6 +40,9 @@
   --accent-glow: rgba(192, 43, 45, 0.1);
   --neon-red: #c02b2d;
   --table-header-bg: #ffffff;
+  /* Dropdown */
+  --dropdown-bg: #ffffff;
+  --dropdown-border: rgba(0, 0, 0, 0.1);
 }
 
 body {
@@ -47,6 +53,55 @@ body {
   transition: background-color 0.4s ease, color 0.4s ease;
 }
 
+/* ─── Animações de transição de página ─────────────────────────────────── */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pageExit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes contentReveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.65; }
+}
+
+.page-enter {
+  animation: pageEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.page-exit {
+  animation: pageExit 0.18s ease-in both;
+}
+
+.content-reveal {
+  animation: contentReveal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.skeleton-pulse {
+  animation: skeletonPulse 1.6s ease-in-out infinite;
+}
+
 @layer components {
   .glass-card {
     background: var(--card-bg);
@@ -54,6 +109,12 @@ body {
     border: 1px solid var(--card-border);
     border-radius: 24px;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Garante que o motion.div do popLayout não collapse durante exit */
+  .page-transition-wrapper {
+    width: 100%;
+    min-height: 1px;
   }
   
   .glass-card:hover {
@@ -95,6 +156,20 @@ body {
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-red);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 45, 85, 0.25);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--neon-red);
 }
 

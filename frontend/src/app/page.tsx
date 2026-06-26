@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import KpiCard from '@/components/BI/KpiCard';
-import { motion } from 'framer-motion';
+import { DashboardSkeleton } from '@/components/BI/PageSkeleton';
 import { TrendingUp, Activity, LayoutDashboard, Monitor, AlertCircle, RefreshCcw, ListOrdered, BarChart as BarIcon, LineChart as LineIcon, PieChart as PieIcon, Database, Trash2, Shield, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { 
   BarChart as ReBarChart, Bar, LineChart as ReLineChart, Line, 
@@ -12,12 +13,19 @@ import {
 } from 'recharts';
 import SafeResponsiveContainer from '@/components/BI/SafeResponsiveContainer';
 import { useAlerts } from '@/context/AlertContext';
-import { fetchWithCache } from '@/utils/api';
+import { fetchWithCache, readCache } from '@/utils/api';
 
 export default function Dashboard() {
   const router = useRouter();
   const { alerts, clearAlerts, isSidebarTransitioning } = useAlerts();
-  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config?: any}>({ cards: [], charts: [], components: [] });
+
+  // Inicializa do cache síncrono para evitar flash em visitas subsequentes
+  const cachedLayout = readCache<any>('http://127.0.0.1:8000/api/layouts/home');
+  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config?: any}>(
+    cachedLayout
+      ? { cards: cachedLayout.cards || [], charts: cachedLayout.charts || [], components: cachedLayout.components || [], config: cachedLayout.config }
+      : { cards: [], charts: [], components: [] }
+  );
   const [kpiData, setKpiData] = useState<Record<string, any>>({});
   const [chartDataMap, setChartDataMap] = useState<Record<string, any[]>>({});
   const [reportDataMap, setReportDataMap] = useState<Record<string, any[]>>({});
@@ -26,6 +34,8 @@ export default function Dashboard() {
   const [settings, setSettings] = useState<any>(null);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState(false);
+  // Se já tem cache, começa como loaded (sem skeleton)
+  const [isLoaded, setIsLoaded] = useState(!!cachedLayout);
 
   const handleReportSort = (compId: string, column: string) => {
     setReportPageMap(prev => ({ ...prev, [compId]: 1 }));
@@ -56,15 +66,17 @@ export default function Dashboard() {
           components: Array.isArray(data.components) ? data.components : [],
           config: data.config
         });
+        setIsLoaded(true);
       });
 
-      const settingsData = await fetchWithCache<any>('http://127.0.0.1:8000/api/settings', undefined, (data) => {
+      await fetchWithCache<any>('http://127.0.0.1:8000/api/settings', undefined, (data) => {
         setSettings(data);
+        refreshIntervalRef.current = (data.refresh_interval || 30) * 1000;
       });
 
       const scripts = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts');
-      
-      // Fetch Data for Cards — coleta tudo em batch para evitar múltiplos setState
+
+      // ── Batch KPIs ──────────────────────────────────────────────────────────
       const kpiBatch: Record<string, any> = {};
       for (const kpi of layoutData.cards || []) {
         const script = scripts.find((s: any) => s.id === kpi.script_id);
@@ -74,77 +86,70 @@ export default function Dashboard() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
           });
-          if (result && result.length > 0) {
-            kpiBatch[kpi.id] = result[0][kpi.column];
-          }
+          if (result?.length > 0) kpiBatch[kpi.id] = result[0][kpi.column];
         }
       }
-      // Atualiza todos os KPIs de uma só vez → um único re-render
-      if (Object.keys(kpiBatch).length > 0) {
-        setKpiData(prev => ({ ...prev, ...kpiBatch }));
-      }
+      if (Object.keys(kpiBatch).length > 0) setKpiData(kpiBatch);
 
-      // Fetch Data for Charts
+      // ── Batch Charts ────────────────────────────────────────────────────────
+      const chartBatch: Record<string, any[]> = {};
       for (const chart of layoutData.charts || []) {
         const script = scripts.find((s: any) => s.id === chart.script_id);
         if (script) {
-          await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
+          const result = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
-          }, (result) => {
-            if (result) {
-              // Process aggregation
-              const agg: Record<string, any> = {};
-              result.forEach((row: any) => {
-                const key = String(row[chart.xAxis] || "N/A");
-                if (!agg[key]) {
-                    agg[key] = { [chart.xAxis]: key };
-                    chart.yAxes.forEach((y: string) => agg[key][y] = 0);
-                }
-                chart.yAxes.forEach((y: string) => {
-                    agg[key][y] += parseFloat(row[y]) || 0;
-                });
-              });
-              let finalData = Object.values(agg);
-              if (chart.chartType === 'ranking') finalData = finalData.sort((a: any, b: any) => (b[chart.yAxes[0]] || 0) - (a[chart.yAxes[0]] || 0));
-              setChartDataMap(prev => ({ ...prev, [chart.id]: finalData }));
-            }
           });
+          if (result) {
+            const agg: Record<string, any> = {};
+            result.forEach((row: any) => {
+              const key = String(row[chart.xAxis] || 'N/A');
+              if (!agg[key]) { agg[key] = { [chart.xAxis]: key }; chart.yAxes.forEach((y: string) => agg[key][y] = 0); }
+              chart.yAxes.forEach((y: string) => { agg[key][y] += parseFloat(row[y]) || 0; });
+            });
+            let finalData = Object.values(agg);
+            if (chart.chartType === 'ranking') finalData = finalData.sort((a: any, b: any) => (b[chart.yAxes[0]] || 0) - (a[chart.yAxes[0]] || 0));
+            chartBatch[chart.id] = finalData;
+          }
         }
       }
+      if (Object.keys(chartBatch).length > 0) setChartDataMap(chartBatch);
 
-      // Fetch Report Data
+      // ── Batch Reports ───────────────────────────────────────────────────────
+      const reportBatch: Record<string, any[]> = {};
       for (const comp of (layoutData.components || []).filter((c: any) => c.compType === 'report' || c.script_id !== undefined)) {
         const script = scripts.find((s: any) => s.id === comp.script_id);
         if (script) {
-          await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
+          const result = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
-          }, (result) => {
-            setReportDataMap(prev => ({ ...prev, [comp.id]: Array.isArray(result) ? result : [] }));
           });
+          reportBatch[comp.id] = Array.isArray(result) ? result : [];
         }
       }
+      if (Object.keys(reportBatch).length > 0) setReportDataMap(reportBatch);
 
       setError(false);
     } catch (err) {
+      console.error(err);
       setError(true);
     } finally {
       setIsFetching(false);
     }
   }, []);
 
+  // Ref para interval dinamico sem re-criar o efeito
+  const refreshIntervalRef = useRef((30) * 1000);
+
   useEffect(() => {
     fetchData();
-    // Use a faster retry interval (3s) if fetch failed, otherwise normal refresh interval
-    const intervalTime = error
-      ? 3000
-      : (settings?.refresh_interval || 30) * 1000;
-    const interval = setInterval(fetchData, intervalTime);
-    return () => clearInterval(interval);
-  }, [fetchData, settings?.refresh_interval, error]);
+    // Usa setInterval com funcao que le o ref atualizado — sem depender de settings/error no dep array
+    const id = setInterval(() => fetchData(), refreshIntervalRef.current);
+    return () => clearInterval(id);
+  }, [fetchData]);
+
 
   const getKpiStatus = (kpi: any, value: number) => {
     if (kpi.kpi_mode === 'info') return "info";
@@ -241,17 +246,26 @@ export default function Dashboard() {
 
   return (
     <>
-        {/* Glow Diagonal do Canto Superior Esquerdo */}
+        {/* Skeleton: aparece apenas enquanto dados não chegaram */}
+        {!isLoaded && (
+          <div className="absolute inset-0 z-10 p-6 pointer-events-none">
+            <DashboardSkeleton />
+          </div>
+        )}
+
+        {/* Conteúdo real — invisível até carregar, depois revela com animação CSS */}
+        <div className={isLoaded ? 'content-reveal' : 'opacity-0 pointer-events-none'}>
+        {/* Glow Diagonal */}
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-neon-red/30 via-neon-red/5 to-transparent pointer-events-none z-0" />
         
         <div className="relative z-10 flex justify-between items-end mb-12">
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <div>
                 <h1 className="text-5xl font-black text-[var(--foreground)] mb-2 tracking-tighter italic uppercase drop-shadow-[0_0_12px_rgba(255,45,85,0.3)]">HUB <span className="text-neon-red">BI</span></h1>
                 <div className="flex items-center gap-3 text-[var(--text-secondary)] font-bold text-[10px] uppercase tracking-widest">
                     <Activity size={12} className={isFetching ? "text-neon-red animate-pulse" : "text-[var(--text-secondary)] opacity-50"} />
                     Telemetria: {isFetching ? 'Sincronizando...' : error ? 'Offline' : 'Online'}
                 </div>
-            </motion.div>
+            </div>
             
             <div className="flex gap-4">
                 <button onClick={() => router.push('/monitor')} className="flex items-center gap-2 bg-[var(--input-bg)] hover:bg-[var(--card-border)] text-[var(--foreground)] px-6 py-3 rounded-2xl border border-[var(--card-border)] transition-all text-xs font-black uppercase"><Monitor size={16} className="text-neon-red" /> Monitoramento</button>
@@ -459,6 +473,7 @@ export default function Dashboard() {
                     </div>
                 );
             })}
+        </div>
         </div>
     </>
   );

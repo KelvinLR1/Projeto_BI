@@ -11,6 +11,14 @@ const getCacheKey = (url: string, options?: RequestInit) => {
 };
 
 /**
+ * Lê dados do cache de forma síncrona.
+ * Útil para inicializar state com dados já disponíveis, sem esperar useEffect.
+ */
+export function readCache<T>(url: string, options?: RequestInit): T | undefined {
+  return cache[getCacheKey(url, options)] as T | undefined;
+}
+
+/**
  * Função utilitária de fetch com cache (Stale-While-Revalidate).
  * - Se os dados já existem no cache, chama imediatamente o callback `onData` de forma síncrona.
  * - Dispara a requisição em segundo plano para atualizar o cache e chama `onData` novamente quando retornar.
@@ -55,7 +63,14 @@ export async function fetchWithCache<T>(
 
   // Cria a promessa de requisição
   const fetchPromise = (async () => {
-    const res = await fetch(url, options);
+    let res: Response;
+    try {
+      res = await fetch(url, options);
+    } catch (networkError) {
+      throw new Error(
+        `Backend offline ou inacessível em "${url}". Verifique se o servidor está rodando. (${(networkError as Error).message})`
+      );
+    }
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     const data = await res.json();
     if (isCacheable) {

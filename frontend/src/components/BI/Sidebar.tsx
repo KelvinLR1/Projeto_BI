@@ -14,7 +14,8 @@ import {
   Trash2,
   X,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  CalendarClock
 } from "lucide-react";
 import { useAlerts } from "@/context/AlertContext";
 
@@ -30,9 +31,10 @@ const menuSections = [
   {
     label: "Studio",
     items: [
-      { icon: Palette, label: "Designer de Ativos", href: "/designer" },
-      { icon: Layers,  label: "Layout e Grade",     href: "/kpi-settings" },
-      { icon: Settings, label: "Scripts SQL",       href: "/editor" },
+      { icon: Palette,       label: "Designer de Ativos", href: "/designer" },
+      { icon: Layers,        label: "Layout e Grade",     href: "/kpi-settings" },
+      { icon: Settings,      label: "Scripts SQL",        href: "/editor" },
+      { icon: CalendarClock, label: "Agendamentos",       href: "/schedules" },
     ]
   }
 ];

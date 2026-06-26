@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, AlertCircle, Info, X } from 'lucide-react';
 
@@ -57,7 +57,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
 
 
 
-    const addAlert = (title: string, message: string, type: 'critical' | 'warning' | 'info') => {
+    const addAlert = useCallback((title: string, message: string, type: 'critical' | 'warning' | 'info') => {
         const newAlert: Alert = {
             id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9),
             title,
@@ -66,24 +66,21 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
             timestamp: new Date(),
             read: false
         };
-
         setAlerts(prev => [newAlert, ...prev]);
         setActiveToasts(prev => [...prev, newAlert]);
-
-        // Auto remove from screen after configured duration
         setTimeout(() => {
             setActiveToasts(prev => prev.filter(t => t.id !== newAlert.id));
         }, duration * 1000);
-    };
+    }, [duration]);
 
-    const clearAlerts = () => {
+    const clearAlerts = useCallback(() => {
         setAlerts([]);
         setActiveToasts([]);
-    };
+    }, []);
 
-    const markAsRead = (id: string) => {
+    const markAsRead = useCallback((id: string) => {
         setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a));
-    };
+    }, []);
 
     return (
         <AlertContext.Provider value={{ 

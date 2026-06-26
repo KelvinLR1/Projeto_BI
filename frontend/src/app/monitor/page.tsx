@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import KpiCard from '@/components/BI/KpiCard';
+import { DashboardSkeleton } from '@/components/BI/PageSkeleton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
     Activity, 
@@ -32,26 +33,33 @@ import {
 } from 'recharts';
 import SafeResponsiveContainer from '@/components/BI/SafeResponsiveContainer';
 import { useAlerts } from '@/context/AlertContext';
-import { fetchWithCache } from '@/utils/api';
+import { fetchWithCache, readCache } from '@/utils/api';
 
 export default function MonitorPage() {
   const router = useRouter();
   const { alerts, clearAlerts, markAsRead, isSidebarTransitioning } = useAlerts();
-  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config?: any}>({ cards: [], charts: [], components: [] });
+  // Inicializa do cache síncrono para evitar flash em visitas subsequentes
+  const cachedLayout = readCache<any>('http://127.0.0.1:8000/api/layouts/noc');
+  const [layout, setLayout] = useState<{cards: any[], charts: any[], components: any[], config?: any}>(
+    cachedLayout
+      ? { cards: cachedLayout.cards || [], charts: cachedLayout.charts || [], components: cachedLayout.components || [], config: cachedLayout.config }
+      : { cards: [], charts: [], components: [] }
+  );
   const [kpiData, setKpiData] = useState<Record<string, any>>({});
   const [chartDataMap, setChartDataMap] = useState<Record<string, any[]>>({});
   const [reportDataMap, setReportDataMap] = useState<Record<string, any[]>>({});
-  const [reportSortMap, setReportSortMap] = useState<Record<string, { column: string; direction: 'asc' | 'desc' }>>({});
+  const [reportSortMap, setReportSortMap] = useState<Record<string, { column: string; direction: 'asc' | 'desc' }>>();
   const [reportPageMap, setReportPageMap] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<any>(null);
   const [isFetching, setIsFetching] = useState(false);
   const [time, setTime] = useState(new Date());
   const [error, setError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(!!cachedLayout);
 
   const handleReportSort = (compId: string, column: string) => {
     setReportPageMap(prev => ({ ...prev, [compId]: 1 }));
     setReportSortMap(prev => {
-      const current = prev[compId];
+      const current = prev ? prev[compId] : undefined;
       if (!current || current.column !== column) {
         return { ...prev, [compId]: { column, direction: 'asc' } };
       }
@@ -66,6 +74,8 @@ export default function MonitorPage() {
 
   const COLORS = ['#ff2d55', '#00ff88', '#ffb700', '#3b82f6', '#8b5cf6', '#ec4899', '#10b981'];
 
+  const refreshIntervalRef = useRef(30 * 1000);
+
   const fetchData = useCallback(async () => {
     setIsFetching(true);
     try {
@@ -76,68 +86,65 @@ export default function MonitorPage() {
           components: Array.isArray(data.components) ? data.components : [],
           config: data.config
         });
+        setIsLoaded(true);
       });
 
       await fetchWithCache<any>('http://127.0.0.1:8000/api/settings', undefined, (data) => {
         setSettings(data);
+        refreshIntervalRef.current = (data.refresh_interval || 30) * 1000;
       });
 
       const scripts = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts');
 
-      // Fetch KPI Data
+      // ── Batch KPIs ───────────────────────────────────────────────────────────
+      const kpiBatch: Record<string, any> = {};
       for (const kpi of layoutData.cards || []) {
         const script = scripts.find((s: any) => s.id === kpi.script_id);
         if (script) {
-          await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          const result = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
-          }, (result) => {
-            if (result && result.length > 0) {
-              setKpiData(prev => ({ ...prev, [kpi.id]: result[0][kpi.column] }));
-            }
           });
+          if (result?.length > 0) kpiBatch[kpi.id] = result[0][kpi.column];
         }
       }
+      if (Object.keys(kpiBatch).length > 0) setKpiData(kpiBatch);
 
-      // Fetch Chart Data
+      // ── Batch Charts ─────────────────────────────────────────────────────────
+      const chartBatch: Record<string, any[]> = {};
       for (const chart of layoutData.charts || []) {
         const script = scripts.find((s: any) => s.id === chart.script_id);
         if (script) {
-          await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          const result = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
-          }, (result) => {
-            if (result) {
-              const agg: Record<string, any> = {};
-              result.forEach((row: any) => {
-                const key = String(row[chart.xAxis] || "N/A");
-                if (!agg[key]) {
-                    agg[key] = { [chart.xAxis]: key };
-                    chart.yAxes.forEach((y: string) => agg[key][y] = 0);
-                }
-                chart.yAxes.forEach((y: string) => agg[key][y] += parseFloat(row[y]) || 0);
-              });
-              setChartDataMap(prev => ({ ...prev, [chart.id]: Object.values(agg) }));
-            }
           });
+          if (result) {
+            const agg: Record<string, any> = {};
+            result.forEach((row: any) => {
+              const key = String(row[chart.xAxis] || 'N/A');
+              if (!agg[key]) { agg[key] = { [chart.xAxis]: key }; chart.yAxes.forEach((y: string) => agg[key][y] = 0); }
+              chart.yAxes.forEach((y: string) => { agg[key][y] += parseFloat(row[y]) || 0; });
+            });
+            chartBatch[chart.id] = Object.values(agg);
+          }
         }
       }
+      if (Object.keys(chartBatch).length > 0) setChartDataMap(chartBatch);
 
-      // Fetch Report Data
+      // ── Batch Reports ────────────────────────────────────────────────────────
+      const reportBatch: Record<string, any[]> = {};
       for (const comp of (layoutData.components || []).filter((c: any) => c.compType === 'report' || c.script_id !== undefined)) {
         const script = scripts.find((s: any) => s.id === comp.script_id);
         if (script) {
-          await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          const result = await fetchWithCache<any[]>('http://127.0.0.1:8000/api/scripts/execute', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: script.query })
-          }, (result) => {
-            setReportDataMap(prev => ({ ...prev, [comp.id]: Array.isArray(result) ? result : [] }));
           });
+          reportBatch[comp.id] = Array.isArray(result) ? result : [];
         }
       }
+      if (Object.keys(reportBatch).length > 0) setReportDataMap(reportBatch);
 
       setError(false);
     } catch (err) {
@@ -150,13 +157,10 @@ export default function MonitorPage() {
 
   useEffect(() => {
     fetchData();
-    const intervalTime = error
-      ? 3000
-      : (settings?.refresh_interval || 30) * 1000;
-    const interval = setInterval(fetchData, intervalTime);
+    const id = setInterval(() => fetchData(), refreshIntervalRef.current);
     const clock = setInterval(() => setTime(new Date()), 1000);
-    return () => { clearInterval(interval); clearInterval(clock); };
-  }, [fetchData, settings?.refresh_interval, error]);
+    return () => { clearInterval(id); clearInterval(clock); };
+  }, [fetchData]);
 
   const renderChart = (chart: any, data: any[]) => {
     const gradientDefs = (
@@ -211,6 +215,15 @@ export default function MonitorPage() {
 
   return (
     <>
+      {/* Skeleton: aparece apenas enquanto dados não chegaram */}
+      {!isLoaded && (
+        <div className="absolute inset-0 z-10 p-12 pointer-events-none">
+          <DashboardSkeleton />
+        </div>
+      )}
+
+      {/* Conteúdo real */}
+      <div className={isLoaded ? 'content-reveal' : 'opacity-0 pointer-events-none'}>
       <div className="flex flex-col gap-10 min-h-screen p-12 px-16">
         {/* HEADER MONITOR */}
         <header className="flex justify-between items-center bg-[var(--card-bg)] p-8 rounded-[40px] border border-[var(--card-border)] shadow-sm">
@@ -408,6 +421,7 @@ export default function MonitorPage() {
                 );
             })}
         </div>
+      </div>
       </div>
     </>
   );

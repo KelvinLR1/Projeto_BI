@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchWithCache, clearCache } from '@/utils/api';
+import CustomSelect from '@/components/BI/CustomSelect';
+import { fetchWithCache, clearCache, readCache } from '@/utils/api';
+import { DesignerSkeleton } from '@/components/BI/PageSkeleton';
 import Link from 'next/link';
 import KpiCard from '@/components/BI/KpiCard';
 import { useAlerts } from '@/context/AlertContext';
@@ -40,8 +42,13 @@ import SafeResponsiveContainer from '@/components/BI/SafeResponsiveContainer';
 export default function DesignerPage() {
   const { isSidebarTransitioning } = useAlerts();
   const [activeTab, setActiveTab] = useState<"charts" | "kpis" | "components">("charts");
-  const [scripts, setScripts] = useState<any[]>([]);
-  const [savedAssets, setSavedAssets] = useState<any[]>([]);
+  // Inicializa do cache síncrono se disponível
+  const cachedScripts = readCache<any[]>('http://127.0.0.1:8000/api/scripts');
+  const cachedAssets  = readCache<any[]>('http://127.0.0.1:8000/api/library');
+
+  const [scripts, setScripts] = useState<any[]>(cachedScripts ?? []);
+  const [savedAssets, setSavedAssets] = useState<any[]>(cachedAssets ?? []);
+  const [isLoaded, setIsLoaded] = useState(!!(cachedScripts && cachedAssets));
   const [selectedScriptId, setSelectedScriptId] = useState("");
   const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -112,8 +119,7 @@ export default function DesignerPage() {
   };
 
   useEffect(() => {
-    loadScripts();
-    loadAssets();
+    Promise.all([loadScripts(), loadAssets()]).finally(() => setIsLoaded(true));
   }, []);
 
   const handleScriptSelect = async (id: string, preserveConfig = false) => {
@@ -135,6 +141,31 @@ export default function DesignerPage() {
         }
       });
     } finally { setLoading(false); }
+  };
+
+  const handleNewAsset = () => {
+    setEditingId(null);
+    setSelectedScriptId("");
+    setRawData([]);
+    if (activeTab === 'charts') {
+      setChartName("");
+      setChartType("bar");
+      setXAxis("");
+      setSelectedYAxes([]);
+      setTargetPageChart("home");
+    } else if (activeTab === 'kpis') {
+      setKpiTitle("");
+      setKpiMode("monitoring");
+      setSelectedKpiColumn("");
+      setThresholdSuccess(100000);
+      setThresholdWarning(50000);
+      setTargetPageKpi("home");
+    } else {
+      setCompTitle("");
+      setCompType("alerts");
+      setCompScriptId("");
+      setTargetPageComp("noc");
+    }
   };
 
   const handleEditAsset = async (asset: any) => {
@@ -461,15 +492,31 @@ export default function DesignerPage() {
 
   return (
     <>
+      {/* Skeleton enquanto dados não chegaram */}
+      {!isLoaded && (
+        <div className="absolute inset-0 z-10 p-6 pointer-events-none">
+          <DesignerSkeleton />
+        </div>
+      )}
+
+      <div className={isLoaded ? 'content-reveal' : 'opacity-0 pointer-events-none'}>
       <div className="mb-6 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-black text-[var(--foreground)] mb-2 uppercase tracking-tighter italic">Designer de <span className="text-neon-red">Ativos</span></h1>
           <div className="flex gap-4">
               <button onClick={() => { setActiveTab("charts"); setEditingId(null); }} className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-lg transition-all ${activeTab === 'charts' ? 'bg-neon-red text-white' : 'text-[var(--text-secondary)] hover:text-[var(--foreground)] bg-[var(--input-bg)]'}`}>Gráficos</button>
               <button onClick={() => { setActiveTab("kpis"); setEditingId(null); }} className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-lg transition-all ${activeTab === 'kpis' ? 'bg-neon-red text-white' : 'text-[var(--text-secondary)] hover:text-[var(--foreground)] bg-[var(--input-bg)]'}`}>Métricas KPI</button>
-              <button onClick={() => { setActiveTab("components"); setEditingId(null); }} className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-lg transition-all ${activeTab === 'components' ? 'bg-neon-red text-white' : 'text-[var(--text-secondary)] hover:text-[var(--foreground)] bg-[var(--input-bg)]'}`}>Componentes NOC</button>
+              <button onClick={() => { setActiveTab("components"); setEditingId(null); }} className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-lg transition-all ${activeTab === 'components' ? 'bg-neon-red text-white' : 'text-[var(--text-secondary)] hover:text-[var(--foreground)] bg-[var(--input-bg)]'}`}>Componentes</button>
           </div>
         </div>
+        {/* Botão Novo Ativo */}
+        <button
+          onClick={handleNewAsset}
+          className="flex items-center gap-2 bg-neon-red hover:bg-neon-red/80 text-white font-black text-[10px] uppercase tracking-widest px-5 py-3 rounded-2xl transition-all shadow-lg shadow-neon-red/25 hover:scale-105 active:scale-95"
+        >
+          <Plus size={14} />
+          {editingId ? 'Novo Ativo' : 'Criar Novo'}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -480,7 +527,16 @@ export default function DesignerPage() {
                         <Library size={16} className="text-neon-red" />
                         <span className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Publicados</span>
                     </div>
-                    <span className="text-[10px] font-black bg-neon-red/10 text-neon-red px-2 py-0.5 rounded-full">{filteredAssets.length}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black bg-neon-red/10 text-neon-red px-2 py-0.5 rounded-full">{filteredAssets.length}</span>
+                      <button
+                        onClick={handleNewAsset}
+                        title="Criar novo ativo"
+                        className="w-6 h-6 rounded-lg bg-neon-red/10 hover:bg-neon-red/20 border border-neon-red/20 flex items-center justify-center transition-all"
+                      >
+                        <Plus size={12} className="text-neon-red" />
+                      </button>
+                    </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                     <AnimatePresence mode="popLayout">
@@ -527,12 +583,47 @@ export default function DesignerPage() {
                          <div className="glass-card p-8 border-neon-red/10 bg-[var(--card-bg)]">
                             <h3 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-8 flex items-center gap-2"><Database size={16} className="text-neon-red" /> Configuração Gráfica</h3>
                             <div className="space-y-6">
-                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Fonte SQL</label><select value={selectedScriptId} onChange={(e) => handleScriptSelect(e.target.value)} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50 transition-colors"><option value="">-- Escolha --</option>{scripts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Estilo</label><div className="grid grid-cols-4 gap-2">{[{ id: "bar", icon: BarChart }, { id: "line", icon: LineIcon }, { id: "pie", icon: PieIcon }, { id: "ranking", icon: ListOrdered }].map(t => (<button key={t.id} onClick={() => setChartType(t.id as any)} className={`p-3 rounded-xl border flex justify-center transition-all ${chartType === t.id ? "bg-neon-red/20 border-neon-red text-white" : "bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)] hover:border-neon-red/30"}`}><t.icon size={18} /></button>))}</div></div>
-                                {rawData.length > 0 && (<div className="space-y-6"><div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Eixo X</label><select value={xAxis} onChange={(e) => setXAxis(e.target.value)} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50">{Object.keys(rawData[0]).map(k => <option key={k} value={k}>{k}</option>)}</select></div><div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Métricas</label><div className="space-y-2">{Object.keys(rawData[0]).filter(k => k !== xAxis).map(k => (<label key={k} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-all ${selectedYAxes.includes(k) ? 'bg-neon-red/10 border-neon-red/40' : 'bg-[var(--input-bg)] border-[var(--card-border)] hover:bg-[var(--card-bg)]'}`}><input type="checkbox" checked={selectedYAxes.includes(k)} onChange={() => setSelectedYAxes(prev => prev.includes(k) ? prev.filter(y => y !== k) : [...prev, k])} className="accent-neon-red w-4 h-4" /><span className={`text-[10px] font-black uppercase ${selectedYAxes.includes(k) ? 'text-[var(--foreground)]' : 'text-[var(--text-secondary)]'}`}>{k}</span></label>))}</div></div></div>)}
+                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Script de Dados — Fonte SQL</label><CustomSelect value={selectedScriptId} onChange={(v) => handleScriptSelect(v)} options={[...scripts.map(s => ({ value: s.id, label: s.name }))]} placeholder="-- Selecione um script --" /></div>
+                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Tipo de Visualização</label><div className="grid grid-cols-4 gap-2">{[{ id: "bar", icon: BarChart, label: "Barras" }, { id: "line", icon: LineIcon, label: "Linha" }, { id: "pie", icon: PieIcon, label: "Pizza" }, { id: "ranking", icon: ListOrdered, label: "Ranking" }].map(t => (<button key={t.id} title={t.label} onClick={() => setChartType(t.id as any)} className={`p-3 rounded-xl border flex justify-center transition-all ${chartType === t.id ? "bg-neon-red/20 border-neon-red text-white" : "bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)] hover:border-neon-red/30"}`}><t.icon size={18} /></button>))}</div></div>
+                                {rawData.length > 0 && (
+                                  <div className="space-y-6">
+                                    <div>
+                                      <label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Eixo X — Categoria / Dimensão</label>
+                                      <CustomSelect value={xAxis} onChange={(v) => { setXAxis(v); setSelectedYAxes(prev => prev.filter(y => y !== v)); }} options={Object.keys(rawData[0]).map(k => ({ value: k, label: k }))} />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Eixo Y — Valores a Exibir</label>
+                                      <div className="space-y-2">
+                                        {Object.keys(rawData[0]).filter(k => k !== xAxis).map(k => {
+                                          const isChecked = selectedYAxes.includes(k);
+                                          return (
+                                            <motion.label 
+                                              key={k} 
+                                              whileHover={{ x: 2 }} 
+                                              onClick={() => setSelectedYAxes(prev => prev.includes(k) ? prev.filter(y => y !== k) : [...prev, k])} 
+                                              className={`flex items-center gap-3 p-3.5 rounded-xl cursor-pointer border transition-all duration-200 ${isChecked ? 'bg-neon-red/10 border-neon-red/40' : 'bg-[var(--input-bg)] border-[var(--card-border)] hover:bg-[var(--card-bg)] hover:border-neon-red/20'}`}
+                                            >
+                                              <div className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 border-2 ${isChecked ? 'bg-neon-red border-neon-red shadow-[0_0_10px_rgba(255,45,85,0.45)]' : 'bg-transparent border-[var(--card-border)]'}`}>
+                                                <AnimatePresence>
+                                                  {isChecked && (
+                                                    <motion.svg initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }} transition={{ duration: 0.15, ease: 'backOut' }} width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                                      <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                                    </motion.svg>
+                                                  )}
+                                                </AnimatePresence>
+                                              </div>
+                                              <span className={`text-[10px] font-black uppercase tracking-wider flex-1 ${isChecked ? 'text-[var(--foreground)]' : 'text-[var(--text-secondary)]'}`}>{k}</span>
+                                              {isChecked && (<motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-1.5 h-1.5 rounded-full bg-neon-red shadow-[0_0_6px_rgba(255,45,85,0.8)]" />)}
+                                            </motion.label>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                                 <div className="pt-6 border-t border-[var(--card-border)] space-y-4">
-                                    <input type="text" value={chartName} onChange={(e) => setChartName(e.target.value)} placeholder="Título do Gráfico" className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50" />
-                                    <select value={targetPageChart} onChange={(e) => setTargetPageChart(e.target.value as any)} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none"><option value="home">Dashboard Principal</option><option value="noc">Página de Monitoramento</option></select>
+                                    <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Título do Gráfico</label><input type="text" value={chartName} onChange={(e) => setChartName(e.target.value)} placeholder="Ex: Distribuição Regional de Vendas" className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50" /></div>
+                                    <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Publicar em qual Página</label><CustomSelect value={targetPageChart} onChange={(v) => setTargetPageChart(v as any)} options={[{ value: 'home', label: 'Dashboard Principal' }, { value: 'noc', label: 'Página de Monitoramento (NOC)' }]} /></div>
                                     <button onClick={handleSaveChart} className="w-full bg-neon-red text-white font-black py-4 rounded-xl text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-neon-red/20 flex items-center justify-center gap-2"><Save size={16} /> {editingId ? 'Atualizar Ativo' : 'Publicar Gráfico'}</button>
                                 </div>
                             </div>
@@ -546,15 +637,15 @@ export default function DesignerPage() {
                         <div className="glass-card p-8 border-neon-red/10 bg-[var(--card-bg)]">
                             <h3 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-8 flex items-center gap-2"><Zap size={16} className="text-neon-red" /> Configuração KPI</h3>
                             <div className="space-y-6">
-                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Nome da Métrica</label><input type="text" value={kpiTitle} onChange={(e) => setKpiTitle(e.target.value)} placeholder="Ex: Vendas Totais" className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50" /></div>
-                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Modo</label><div className="grid grid-cols-2 gap-4"><button onClick={() => setKpiMode("monitoring")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${kpiMode === 'monitoring' ? 'bg-neon-red/20 border-neon-red text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><Zap size={18} /><span className="text-[9px] font-black uppercase">Monitoramento</span></button><button onClick={() => setKpiMode("info")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${kpiMode === 'info' ? 'bg-blue-500/20 border-blue-500 text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><Info size={18} /><span className="text-[9px] font-black uppercase">Informativo</span></button></div></div>
-                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Fonte SQL</label><select value={selectedScriptId} onChange={(e) => handleScriptSelect(e.target.value)} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50"><option value="">-- Escolha --</option>{scripts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                                {rawData.length > 0 && (<div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Coluna Valor</label><select value={selectedKpiColumn} onChange={(e) => setSelectedKpiColumn(e.target.value)} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50">{Object.keys(rawData[0]).map(k => <option key={k} value={k}>{k}</option>)}</select></div>)}
+                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Nome Exibido no Card KPI</label><input type="text" value={kpiTitle} onChange={(e) => setKpiTitle(e.target.value)} placeholder="Ex: Vendas Totais do Mês" className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50" /></div>
+                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Modo de Exibição do KPI</label><div className="grid grid-cols-2 gap-4"><button onClick={() => setKpiMode("monitoring")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${kpiMode === 'monitoring' ? 'bg-neon-red/20 border-neon-red text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><Zap size={18} /><span className="text-[9px] font-black uppercase">Monitoramento</span></button><button onClick={() => setKpiMode("info")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${kpiMode === 'info' ? 'bg-blue-500/20 border-blue-500 text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><Info size={18} /><span className="text-[9px] font-black uppercase">Informativo</span></button></div></div>
+                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Script de Dados — Fonte SQL</label><CustomSelect value={selectedScriptId} onChange={(v) => handleScriptSelect(v)} options={[...scripts.map(s => ({ value: s.id, label: s.name }))]} placeholder="-- Selecione um script --" /></div>
+                                {rawData.length > 0 && (<div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Coluna com o Valor Principal</label><CustomSelect value={selectedKpiColumn} onChange={setSelectedKpiColumn} options={Object.keys(rawData[0]).map(k => ({ value: k, label: k }))} /></div>)}
                                 {kpiMode === 'monitoring' && (
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest flex items-center gap-1">
-                                                <span className="inline-block w-2 h-2 rounded-full bg-success"></span> Valor de Sucesso
+                                                <span className="inline-block w-2 h-2 rounded-full bg-success"></span> Limite mínimo p/ Sucesso (≥)
                                             </label>
                                             <input
                                                 type="number"
@@ -565,7 +656,7 @@ export default function DesignerPage() {
                                         </div>
                                         <div>
                                             <label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest flex items-center gap-1">
-                                                <span className="inline-block w-2 h-2 rounded-full bg-warning"></span> Valor de Alerta
+                                                <span className="inline-block w-2 h-2 rounded-full bg-warning"></span> Limite de Atenção (≥ alerta)
                                             </label>
                                             <input
                                                 type="number"
@@ -577,7 +668,7 @@ export default function DesignerPage() {
                                     </div>
                                 )}
                                 <div className="pt-6 border-t border-[var(--card-border)] space-y-4">
-                                    <select value={targetPageKpi} onChange={(e) => setTargetPageKpi(e.target.value as any)} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50"><option value="home">Dashboard Principal</option><option value="noc">Página de Monitoramento</option></select>
+                                    <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Publicar em qual Página</label><CustomSelect value={targetPageKpi} onChange={(v) => setTargetPageKpi(v as any)} options={[{ value: 'home', label: 'Dashboard Principal' }, { value: 'noc', label: 'Página de Monitoramento (NOC)' }]} /></div>
                                     <button onClick={handleSaveKpi} className="w-full bg-neon-red text-white font-black py-4 rounded-xl text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-neon-red/20 flex items-center justify-center gap-2"><Save size={16} /> {editingId ? 'Atualizar Ativo' : 'Publicar KPI'}</button>
                                 </div>
                             </div>
@@ -587,27 +678,27 @@ export default function DesignerPage() {
                 )}
 
                 {activeTab === 'components' && (
-                    <motion.div key="components" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <motion.div key="components" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
                         <div className="glass-card p-8 border-neon-red/10 bg-[var(--card-bg)]">
                             <h3 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-8 flex items-center gap-2"><Bell size={16} className="text-neon-red" /> Componente Dashboard</h3>
                             <div className="space-y-6">
-                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Tipo de Componente</label><div className="grid grid-cols-2 gap-4"><button onClick={() => setCompType("alerts")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${compType === 'alerts' ? 'bg-neon-red/20 border-neon-red text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><AlertCircle size={18} /><span className="text-[9px] font-black uppercase">Alertas</span></button><button onClick={() => setCompType("report")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${compType === 'report' ? 'bg-blue-500/20 border-blue-500 text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><Database size={18} /><span className="text-[9px] font-black uppercase">Relatório (Tabela)</span></button></div></div>
-                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Título do Componente</label><input type="text" value={compTitle} onChange={(e) => setCompTitle(e.target.value)} placeholder="Ex: Central de Alertas NOC" className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50" /></div>
+                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Tipo de Componente a Adicionar</label><div className="grid grid-cols-2 gap-4"><button onClick={() => setCompType("alerts")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${compType === 'alerts' ? 'bg-neon-red/20 border-neon-red text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><AlertCircle size={18} /><span className="text-[9px] font-black uppercase">Central de Alertas</span></button><button onClick={() => setCompType("report")} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${compType === 'report' ? 'bg-blue-500/20 border-blue-500 text-white' : 'bg-[var(--input-bg)] border-[var(--card-border)] text-[var(--text-secondary)]'}`}><Database size={18} /><span className="text-[9px] font-black uppercase">Tabela de Dados</span></button></div></div>
+                                <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Título Exibido no Painel</label><input type="text" value={compTitle} onChange={(e) => setCompTitle(e.target.value)} placeholder="Ex: Central de Alertas NOC" className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50" /></div>
                                 {compType === 'report' && (
-                                    <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Fonte SQL</label><select value={compScriptId} onChange={(e) => {setCompScriptId(e.target.value); handleScriptSelect(e.target.value);}} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50"><option value="">-- Escolha --</option>{scripts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                                    <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Script de Dados — Fonte SQL</label><CustomSelect value={compScriptId} onChange={(v) => { setCompScriptId(v); handleScriptSelect(v); }} options={[...scripts.map(s => ({ value: s.id, label: s.name }))]} placeholder="-- Selecione um script --" /></div>
                                 )}
                                 <div className="pt-6 border-t border-[var(--card-border)] space-y-4">
-                                    <select value={targetPageComp} onChange={(e) => setTargetPageComp(e.target.value as any)} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-xs text-[var(--foreground)] font-bold outline-none focus:border-neon-red/50"><option value="noc">Página de Monitoramento</option><option value="home">Dashboard Principal</option></select>
+                                    <div><label className="block text-[9px] font-black text-[var(--text-secondary)] mb-2 uppercase tracking-widest">Publicar em qual Página</label><CustomSelect value={targetPageComp} onChange={(v) => setTargetPageComp(v as any)} options={[{ value: 'noc', label: 'Página de Monitoramento (NOC)' }, { value: 'home', label: 'Dashboard Principal' }]} /></div>
                                     <button onClick={handleSaveComp} className="w-full bg-neon-red text-white font-black py-4 rounded-xl text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-neon-red/20 flex items-center justify-center gap-2"><Save size={16} /> {editingId ? 'Atualizar Ativo' : 'Publicar Componente'}</button>
                                 </div>
                             </div>
                         </div>
-                        <div className="glass-card p-8 bg-[var(--card-bg)] border-[var(--card-border)] flex flex-col shadow-sm"><h3 className="text-xl font-black text-[var(--foreground)] uppercase tracking-tighter italic mb-8">Preview do Componente</h3><div className="flex-1 bg-[var(--background)] rounded-3xl border border-[var(--card-border)] p-6 flex flex-col gap-4 shadow-inner"><div className="flex items-center gap-2 text-neon-red mb-2">{compType === 'alerts' ? <AlertCircle size={18} /> : <Database size={18} />}<span className="text-[10px] font-black uppercase tracking-widest text-[var(--foreground)]">{compTitle || (compType === 'alerts' ? 'CENTRAL DE ALERTAS' : 'RELATÓRIO DE DADOS')}</span></div><div className="space-y-3 opacity-30">{compType === 'alerts' ? [1,2,3].map(i => (<div key={i} className="p-3 bg-[var(--input-bg)] rounded-xl border border-[var(--card-border)]"><div className="h-2 w-24 bg-[var(--text-secondary)] rounded mb-2 opacity-50" /><div className="h-1.5 w-full bg-[var(--card-border)] rounded" /></div>)) : <div className="w-full h-32 rounded-xl border border-[var(--card-border)] border-dashed flex items-center justify-center"><span className="text-[10px] font-bold tracking-widest uppercase text-[var(--text-secondary)]">Grid de Dados</span></div>}</div></div></div>
                     </motion.div>
                 )}
             </AnimatePresence>
-         </div>
-      </div>
+         </div>{/* lg:col-span-9 */}
+      </div>{/* grid */}
+      </div>{/* content-reveal */}
     </>
   );
 }

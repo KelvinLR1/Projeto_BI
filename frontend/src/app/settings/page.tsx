@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import CustomSelect from '@/components/BI/CustomSelect';
 import { motion, AnimatePresence } from 'framer-motion';
+import { readCache, fetchWithCache } from '@/utils/api';
 import { 
   Save, 
   Palette, 
@@ -21,6 +23,8 @@ import {
 } from 'lucide-react';
 
 export default function SettingsPage() {
+  const cachedSettings = readCache<any>('http://127.0.0.1:8000/api/settings');
+
   const [settings, setSettings] = useState({
     accent_color: "#ff2d55",
     refresh_interval: 30,
@@ -30,17 +34,17 @@ export default function SettingsPage() {
     alert_sound: false,
     alert_pulse: true,
     alert_sidebar: true,
-    alert_duration: 8, // New setting
+    alert_duration: 8,
     compact_view: false,
-    theme: "dark"
+    theme: "dark",
+    ...(cachedSettings || {})
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedSettings);
   const [saving, setSaving] = useState(false);
   const [activeHelp, setActiveHelp] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/settings')
-      .then(res => res.json())
+    fetchWithCache<any>('http://127.0.0.1:8000/api/settings')
       .then(data => {
         setSettings(prev => ({ ...prev, ...data }));
         setLoading(false);
@@ -176,10 +180,14 @@ export default function SettingsPage() {
                 <div>
                     <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Database size={16} /> Motor de Dados</h3>
                     <div className="flex items-center mb-2"><span className="text-[10px] font-black text-gray-700 uppercase">MODO OPERACIONAL</span><InfoIcon id="system_mode" /></div>
-                    <select value={settings.system_mode} onChange={(e) => setSettings({...settings, system_mode: e.target.value})} className="w-full bg-[var(--input-bg)] border border-[var(--card-border)] rounded-xl p-3 text-xs font-black text-neon-red uppercase tracking-widest outline-none focus:border-neon-red/50">
-                        <option value="DEMO">MODO DEMO (SIMULADOR)</option>
-                        <option value="PRODUCTION">MODO PRODUÇÃO (SQL REAL)</option>
-                    </select>
+                    <CustomSelect
+                      value={settings.system_mode}
+                      onChange={(v) => setSettings({...settings, system_mode: v})}
+                      options={[
+                        { value: 'DEMO', label: 'MODO DEMO (SIMULADOR)' },
+                        { value: 'PRODUCTION', label: 'MODO PRODUÇÃO (SQL REAL)' }
+                      ]}
+                    />
                 </div>
             </div>
         </div>
